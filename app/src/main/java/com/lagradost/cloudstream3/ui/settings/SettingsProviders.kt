@@ -17,7 +17,6 @@ import com.lagradost.cloudstream3.utils.AppContextUtils.getApiDubstatusSettings
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiProviderLangSettings
 import com.lagradost.cloudstream3.utils.DataStoreHelper
 import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showMultiDialog
-import com.lagradost.cloudstream3.utils.SubtitleHelper.getNameNextToFlagEmoji
 import com.lagradost.cloudstream3.utils.UIHelper.hideKeyboard
 
 class SettingsProviders : BasePreferenceFragmentCompat() {
@@ -111,15 +110,17 @@ class SettingsProviders : BasePreferenceFragmentCompat() {
 
         getPref(R.string.provider_lang_key)?.setOnPreferenceClickListener {
             activity?.getApiProviderLangSettings()?.let { currentLangTags ->
-                val languagesTagName = APIHolder.apis.withLock {
+                // Providers report their language as a primary subtag ("pt"), never as a regional
+                // variant ("pt-BR"), so those variants are collapsed away to keep every entry selectable.
+                val languagesTagName =
                     listOf(Pair(AllLanguagesName, getString(R.string.all_languages_preference))) +
-                        APIHolder.apis.map { Pair(it.lang, getNameNextToFlagEmoji(it.lang) ?: it.lang) }
-                            .toSet().sortedBy { it.second.substringAfter("\u00a0").lowercase() }
-                }
+                            appLanguages
+                                .distinctBy { it.second.substringBefore('-') }
+                                .map { Pair(it.second.substringBefore('-'), it.nameNextToFlagEmoji()) }
 
                 val currentIndexList = currentLangTags.map { langTag ->
                     languagesTagName.indexOfFirst { lang -> lang.first == langTag }
-                }
+                }.filter { it > -1 }
 
                 activity?.showMultiDialog(
                     languagesTagName.map { it.second },

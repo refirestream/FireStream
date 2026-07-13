@@ -8,13 +8,14 @@ import androidx.core.util.forEach
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceManager
 import com.lagradost.cloudstream3.AllLanguagesName
-import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.databinding.FragmentSetupProviderLanguagesBinding
 import com.lagradost.cloudstream3.mvvm.safe
+import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.ui.BaseFragment
+import com.lagradost.cloudstream3.ui.settings.appLanguages
+import com.lagradost.cloudstream3.ui.settings.nameNextToFlagEmoji
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiProviderLangSettings
-import com.lagradost.cloudstream3.utils.SubtitleHelper.getNameNextToFlagEmoji
 import com.lagradost.cloudstream3.utils.UIHelper.fixSystemBarsPadding
 
 class SetupFragmentProviderLanguage : BaseFragment<FragmentSetupProviderLanguagesBinding>(
@@ -36,11 +37,13 @@ class SetupFragmentProviderLanguage : BaseFragment<FragmentSetupProviderLanguage
 
             val currentLangTags = ctx.getApiProviderLangSettings()
 
-            val languagesTagName = APIHolder.apis.withLock {
+            // Providers report their language as a primary subtag ("pt"), never as a regional
+            // variant ("pt-BR"), so those variants are collapsed away to keep every entry selectable.
+            val languagesTagName =
                 listOf(Pair(AllLanguagesName, getString(R.string.all_languages_preference))) +
-                APIHolder.apis.map { Pair(it.lang, getNameNextToFlagEmoji(it.lang) ?: it.lang) }
-                    .toSet().sortedBy { it.second.substringAfter("\u00a0").lowercase() } // name ignoring flag emoji
-            }
+                        appLanguages
+                            .distinctBy { it.second.substringBefore('-') }
+                            .map { Pair(it.second.substringBefore('-'), it.nameNextToFlagEmoji()) }
 
             val currentIndexList = currentLangTags.map { langTag ->
                 languagesTagName.indexOfFirst { lang -> lang.first == langTag }
@@ -68,7 +71,18 @@ class SetupFragmentProviderLanguage : BaseFragment<FragmentSetupProviderLanguage
                 }
 
                 nextBtt.setOnClickListener {
-                    findNavController().navigate(R.id.navigation_setup_provider_languages_to_navigation_setup_media)
+                    // If no plugins go to plugins page
+                    if (
+                        PluginManager.getPluginsOnline().isEmpty()
+                        && PluginManager.getPluginsLocal().isEmpty()
+                    ) {
+                        findNavController().navigate(
+                            R.id.action_navigation_global_to_navigation_setup_extensions,
+                            SetupFragmentExtensions.newInstance(true)
+                        )
+                    } else {
+                        findNavController().navigate(R.id.navigation_setup_provider_languages_to_navigation_setup_media)
+                    }
                 }
 
                 prevBtt.setOnClickListener {

@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.View
 import androidx.core.view.isVisible
 import androidx.navigation.fragment.findNavController
-import com.lagradost.cloudstream3.APIHolder.apis
 import com.lagradost.cloudstream3.MainActivity.Companion.afterRepositoryLoadedEvent
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.databinding.FragmentSetupExtensionsBinding
@@ -82,20 +81,13 @@ class SetupFragmentExtensions : BaseFragment<FragmentSetupExtensionsBinding>(
                 nextBtt.setOnClickListener {
                     // Continue setup
                     if (isSetup)
-                        if (
-                        // If any available languages
-                            apis.distinctBy { it.lang }.size > 1
-                        ) {
-                            findNavController().navigate(R.id.action_navigation_setup_extensions_to_navigation_setup_provider_languages)
-                        } else {
-                            findNavController().navigate(R.id.action_navigation_setup_extensions_to_navigation_setup_media)
-                        }
+                        findNavController().navigate(R.id.action_navigation_setup_extensions_to_navigation_setup_media)
                     else
                         findNavController().navigate(R.id.navigation_home)
                 }
 
                 prevBtt.setOnClickListener {
-                    findNavController().navigate(R.id.navigation_setup_language)
+                    findNavController().popBackStack()
                 }
             }
         }

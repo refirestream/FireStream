@@ -12,7 +12,6 @@ import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
 import com.lagradost.cloudstream3.CommonActivity
 import com.lagradost.cloudstream3.databinding.FragmentSetupLanguageBinding
 import com.lagradost.cloudstream3.mvvm.safe
-import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.ui.BaseFragment
 import com.lagradost.cloudstream3.ui.settings.appLanguages
@@ -69,17 +68,10 @@ class SetupFragmentLanguage : BaseFragment<FragmentSetupLanguageBinding>(
                 }
 
                 nextBtt.setOnClickListener {
-                    // If no plugins go to plugins page
-                    val nextDestination = if (
-                        PluginManager.getPluginsOnline().isEmpty()
-                        && PluginManager.getPluginsLocal().isEmpty()
-                    //&& PREBUILT_REPOSITORIES.isNotEmpty()
-                    ) R.id.action_navigation_global_to_navigation_setup_extensions
-                    else R.id.action_navigation_setup_language_to_navigation_setup_provider_languages
-
+                    // Provider languages are always picked, before any extension is installed,
+                    // so that the extension list is filtered on them.
                     findNavController().navigate(
-                        nextDestination,
-                        SetupFragmentExtensions.newInstance(true)
+                        R.id.action_navigation_setup_language_to_navigation_setup_provider_languages
                     )
                 }
 

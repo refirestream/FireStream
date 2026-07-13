@@ -255,6 +255,7 @@
     </array>
 
     <string-array name="themes_overlay_names">
+        <item>Fire 🔥</item>
         <item>Normal</item>
         <item>Dandelion Yellow</item>
         <item>Carnation Pink</item>
@@ -267,7 +268,7 @@
         <item>Cool Blue</item>
         <item>Brown</item>
         <item>Cool</item>
-        <item>Fire</item>
+        <item>Crimson</item>
         <item>Burple</item>
         <item>Green</item>
         <item>Apple</item>
@@ -279,6 +280,7 @@
         <item>Material You (Secondary)</item>
     </string-array>
     <string-array name="themes_overlay_names_values">
+        <item>Fire</item>
         <item>Normal</item>
         <item>DandelionYellow</item>
         <item>CarnationPink</item>

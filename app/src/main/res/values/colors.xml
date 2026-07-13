@@ -114,6 +114,7 @@
     <color name="colorPrimaryWhite">#FFFFFF</color>
     <color name="colorPrimaryBrown">#622C00</color>
     <color name="colorPrimaryOrange">#CE8500</color>
+    <color name="colorPrimaryFire">#FF6D00</color>
     <color name="colorPrimaryDandelionYellow">#F5BB00</color>
     <color name="colorPrimaryCoolBlue">#408cac</color>
     <color name="colorPrimaryLavender">#6F55AF</color>

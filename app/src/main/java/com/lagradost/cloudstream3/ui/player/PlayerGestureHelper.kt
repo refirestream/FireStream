@@ -217,10 +217,10 @@ class PlayerGestureHelper(private val playerView: PlayerView) {
         try {
             val sm = PreferenceManager.getDefaultSharedPreferences(context)
             swipeVerticalEnabled = sm.getBoolean(context.getString(R.string.swipe_vertical_enabled_key), true)
-            swipeHorizontalEnabled = sm.getBoolean(context.getString(R.string.swipe_enabled_key), true)
+            swipeHorizontalEnabled = sm.getBoolean(context.getString(R.string.swipe_enabled_key), false)
             extraBrightnessEnabled = sm.getBoolean(context.getString(R.string.extra_brightness_key), false)
             speedupEnabled = sm.getBoolean(context.getString(R.string.speedup_key), false)
-            doubleTapEnabled = sm.getBoolean(context.getString(R.string.double_tap_enabled_key), false)
+            doubleTapEnabled = sm.getBoolean(context.getString(R.string.double_tap_enabled_key), true)
             doubleTapPauseEnabled = sm.getBoolean(context.getString(R.string.double_tap_pause_enabled_key), false)
             fastForwardTime = sm.getInt(context.getString(R.string.double_tap_seek_time_key), 10).toLong() * 1000L
         } catch (_: Exception) {

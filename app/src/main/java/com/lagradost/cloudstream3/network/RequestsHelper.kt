@@ -16,6 +16,9 @@ import org.conscrypt.Conscrypt
 import java.io.File
 import java.security.Security
 
+/** Quad9, see R.array.dns_pref_values */
+const val DEFAULT_DNS_PREF = 6
+
 // Backwards compatible constructor, mark as deprecated later
 fun Requests.initClient(context: Context) {
     this.baseClient = buildDefaultClient(context)
@@ -39,7 +42,7 @@ fun buildDefaultClient(context: Context, ignoreSSL: Boolean = false): OkHttpClie
     safe { Security.insertProviderAt(Conscrypt.newProvider(), 1) }
     
     val settingsManager = PreferenceManager.getDefaultSharedPreferences(context)
-    val dns = settingsManager.getInt(context.getString(R.string.dns_pref), 0)
+    val dns = settingsManager.getInt(context.getString(R.string.dns_pref), DEFAULT_DNS_PREF)
     val baseClient = OkHttpClient.Builder()
         .followRedirects(true)
         .followSslRedirects(true)

@@ -25,6 +25,7 @@ import com.lagradost.cloudstream3.databinding.AddRemoveSitesBinding
 import com.lagradost.cloudstream3.databinding.AddSiteInputBinding
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.mvvm.safe
+import com.lagradost.cloudstream3.network.DEFAULT_DNS_PREF
 import com.lagradost.cloudstream3.network.initClient
 import com.lagradost.cloudstream3.ui.BasePreferenceFragmentCompat
 import com.lagradost.cloudstream3.ui.settings.Globals.EMULATOR
@@ -326,7 +327,7 @@ class SettingsGeneral : BasePreferenceFragmentCompat() {
             val prefValues = resources.getIntArray(R.array.dns_pref_values)
 
             val currentDns =
-                settingsManager.getInt(getString(R.string.dns_pref), 0)
+                settingsManager.getInt(getString(R.string.dns_pref), DEFAULT_DNS_PREF)
 
             activity?.showBottomDialog(
                 prefNames.toList(),

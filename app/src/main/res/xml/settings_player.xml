@@ -136,7 +136,7 @@
             android:icon="@drawable/ic_baseline_ondemand_video_24"
             android:summary="@string/swipe_to_seek_settings_des"
             android:title="@string/swipe_to_seek_settings"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:key="@string/swipe_enabled_key" />
         <SwitchPreference
             android:icon="@drawable/ic_baseline_ondemand_video_24"
@@ -148,7 +148,7 @@
             android:icon="@drawable/ic_baseline_touch_app_24"
             android:summary="@string/double_tap_to_seek_settings_des"
             android:title="@string/double_tap_to_seek_settings"
-            app:defaultValue="false"
+            app:defaultValue="true"
             app:key="@string/double_tap_enabled_key" />
         <SwitchPreference
             android:icon="@drawable/netflix_pause"

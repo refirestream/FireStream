@@ -39,7 +39,7 @@
                 android:background="?selectableItemBackgroundBorderless"
                 android:contentDescription="@string/change_providers_img_des"
                 android:focusable="true"
-                android:nextFocusLeft="@id/navigation_library"
+                android:nextFocusLeft="@id/navigation_settings"
                 android:nextFocusRight="@id/library_sort"
                 android:padding="2dp"
                 android:src="@drawable/ic_baseline_extension_24"

@@ -30,24 +30,45 @@
 
         <TextView
             android:id="@+id/main_text"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:textColor="?attr/textColor"
             android:textSize="16sp"
             tools:text="Test repository" />
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:layout_gravity="center_vertical"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:gravity="center_vertical"
             android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/repository_name_text"
+                style="@style/SmallBlackButton"
+                android:layout_marginEnd="6dp"
+                android:ellipsize="end"
+                android:maxWidth="180dp"
+                android:minHeight="0dp"
+                android:singleLine="true"
+                android:visibility="gone"
+                android:insetBottom="0dp"
+                android:insetTop="0dp"
+                tools:text="German Repo"
+                tools:visibility="visible" />
 
             <TextView
                 android:id="@+id/lang_icon"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_marginEnd="5dp"
+                android:ellipsize="end"
+                android:maxWidth="120dp"
+                android:singleLine="true"
                 android:text="🇷🇼"
+                android:textSize="12sp"
 
                 android:textColor="?attr/grayTextColor"
                 android:visibility="gone"
@@ -57,10 +78,11 @@
                 android:id="@+id/ext_version"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
                 android:layout_marginEnd="5dp"
+                android:singleLine="true"
                 android:text="v1"
                 android:textColor="?attr/grayTextColor"
+                android:textSize="12sp"
                 android:visibility="gone"
                 tools:visibility="visible" />
 
@@ -68,10 +90,11 @@
                 android:id="@+id/ext_filesize"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
                 android:layout_marginEnd="5dp"
+                android:singleLine="true"
                 android:text="100MB"
                 android:textColor="?attr/grayTextColor"
+                android:textSize="12sp"
                 android:visibility="gone"
                 tools:visibility="visible" />
 
@@ -79,11 +102,12 @@
                 android:id="@+id/ext_votes"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_gravity="center_vertical"
                 android:layout_marginEnd="5dp"
-                tools:text="Rating: 0"
+                android:singleLine="true"
                 android:textColor="?attr/grayTextColor"
+                android:textSize="12sp"
                 android:visibility="gone"
+                tools:text="Rating: 0"
                 tools:visibility="visible" />
 
             <TextView
@@ -92,6 +116,7 @@
                 android:layout_height="wrap_content"
                 android:text="@string/is_adult"
                 android:textColor="@color/adultColor"
+                android:textSize="12sp"
                 android:visibility="gone"
                 tools:visibility="visible" />
 
@@ -99,20 +124,14 @@
 
         <TextView
             android:id="@+id/sub_text"
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:singleLine="true"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:textColor="?attr/grayTextColor"
             android:textSize="12sp"
             tools:text="https://github.com/..." />
-
-        <com.google.android.material.button.MaterialButton
-            android:layout_marginTop="5dp"
-            tools:visibility="visible"
-            android:visibility="gone"
-            android:id="@+id/repository_name_text"
-            style="@style/SmallBlackButton"
-            tools:text="Repository name" />
     </LinearLayout>
 
     <ImageView

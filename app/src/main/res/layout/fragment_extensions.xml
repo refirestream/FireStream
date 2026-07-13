@@ -21,44 +21,27 @@
             android:background="?attr/primaryGrayBackground"
             android:paddingTop="@dimen/navbar_height"
             app:layout_scrollFlags="scroll|enterAlways"
-            app:menu="@menu/repository_search"
+            app:menu="@menu/extensions"
             app:navigationIconTint="?attr/iconColor"
             app:titleTextColor="?attr/textColor"
-            tools:title="Overlord" />
+            tools:title="Extensions" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!--    <include layout="@layout/standard_toolbar" />-->
-
     <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/repo_recycler_view"
+        android:id="@+id/plugin_recycler_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginBottom="80dp"
         android:background="?attr/primaryBlackBackground"
         android:clipToPadding="false"
+        android:nextFocusLeft="@id/nav_rail_view"
         android:nextFocusUp="@id/settings_toolbar"
         android:nextFocusDown="@id/plugin_storage_appbar"
         app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
         app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        app:layout_constraintBottom_toTopOf="@id/download_storage_appbar"
-        app:layout_constraintTop_toTopOf="parent"
         tools:listitem="@layout/repository_item"
         tools:visibility="visible" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:visibility="gone"
-        android:id="@+id/plugin_recycler_view"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="?attr/primaryBlackBackground"
-        android:clipToPadding="false"
-        android:layout_marginBottom="80dp"
-        android:nextFocusLeft="@id/nav_rail_view"
-        android:nextFocusUp="@id/tvtypes_chips"
-        app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior"
-        tools:listitem="@layout/repository_item" />
 
     <LinearLayout
         android:id="@+id/blank_repo_screen"
@@ -83,12 +66,13 @@
             android:text="@string/blank_repo_message"
             android:textSize="16sp" />
 
-        <!--        <com.google.android.material.button.MaterialButton-->
-        <!--            android:id="@+id/list_repositories"-->
-        <!--            style="@style/WhiteButton"-->
-        <!--            android:layout_width="wrap_content"-->
-        <!--            android:nextFocusDown="@id/add_repo_button"-->
-        <!--            android:text="@string/view_public_repositories_button" />-->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/blank_repositories_button"
+            style="@style/WhiteButton"
+            android:layout_width="wrap_content"
+            android:focusable="true"
+            android:nextFocusLeft="@id/nav_rail_view"
+            android:text="@string/repositories" />
     </LinearLayout>
 
     <LinearLayout
@@ -100,8 +84,9 @@
         android:baselineAligned="false"
         android:focusable="true"
         android:foreground="@drawable/outline_drawable"
-        android:nextFocusRight="@id/add_repo_button_imageview"
-        android:nextFocusUp="@id/repo_recycler_view"
+        android:nextFocusLeft="@id/nav_rail_view"
+        android:nextFocusRight="@id/repositories_button_imageview"
+        android:nextFocusUp="@id/plugin_recycler_view"
         android:orientation="horizontal"
         android:padding="10dp"
         android:visibility="visible">
@@ -215,7 +200,7 @@
         </LinearLayout>
 
         <LinearLayout
-            android:id="@+id/add_repo_button_imageview_holder"
+            android:id="@+id/repositories_button_holder"
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
             android:orientation="vertical"
@@ -227,39 +212,27 @@
                 android:layout_height="wrap_content"
 
                 android:layout_gravity="center"
-                android:text="@string/add_repository"
+                android:text="@string/repositories"
                 android:textColor="?attr/textColor" />
 
             <ImageView
-                android:id="@+id/add_repo_button_imageview"
+                android:id="@+id/repositories_button_imageview"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
                 android:layout_gravity="center"
 
                 android:background="@drawable/outline_drawable"
-                android:contentDescription="@string/add_repository"
+                android:contentDescription="@string/repositories"
                 android:focusable="true"
                 android:nextFocusLeft="@id/plugin_storage_appbar"
-                android:nextFocusUp="@id/repo_recycler_view"
-                android:nextFocusRight="@id/add_repo_button_imageview"
-                android:nextFocusDown="@id/add_repo_button_imageview"
+                android:nextFocusUp="@id/plugin_recycler_view"
+                android:nextFocusRight="@id/repositories_button_imageview"
+                android:nextFocusDown="@id/repositories_button_imageview"
 
-                android:src="@drawable/ic_baseline_add_24"
+                android:src="@drawable/ic_github_logo"
                 app:tint="?attr/textColor" />
         </LinearLayout>
 
     </LinearLayout>
 
-    <com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton
-        android:id="@+id/add_repo_button"
-        style="@style/ExtendedFloatingActionButton"
-        android:foreground="@drawable/outline_drawable"
-        android:nextFocusDown="@id/plugin_storage_appbar"
-        android:text="@string/add_repository"
-        android:textColor="?attr/textColor"
-        android:translationY="-80dp"
-        app:icon="@drawable/ic_baseline_add_24"
-        tools:ignore="ContentDescription" />
-
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
-

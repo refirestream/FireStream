@@ -128,13 +128,13 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
             }
         }
 
-        fun Fragment?.setUpToolbar(@StringRes title: Int) {
+        fun Fragment?.setUpToolbar(@StringRes title: Int, showBackButton: Boolean = true) {
             if (this == null) return
             val settingsToolbar = view?.findViewById<MaterialToolbar>(R.id.settings_toolbar) ?: return
 
             settingsToolbar.apply {
                 setTitle(title)
-                if (isLayout(PHONE or EMULATOR)) {
+                if (showBackButton && isLayout(PHONE or EMULATOR)) {
                     setNavigationIcon(R.drawable.ic_baseline_arrow_back_24)
                     children.firstOrNull { it is ImageView }?.tag = getString(R.string.tv_no_focus_tag)
                     setNavigationOnClickListener {
@@ -228,7 +228,7 @@ class SettingsFragment : BaseFragment<MainSettingsBinding>(
                 settingsUi to R.id.action_navigation_global_to_navigation_settings_ui,
                 settingsProviders to R.id.action_navigation_global_to_navigation_settings_providers,
                 settingsUpdates to R.id.action_navigation_global_to_navigation_settings_updates,
-                settingsExtensions to R.id.action_navigation_global_to_navigation_settings_extensions,
+                settingsLibrary to R.id.action_navigation_global_to_navigation_library,
             ).forEach { (view, navigationId) ->
                 view.apply {
                     setOnClickListener {

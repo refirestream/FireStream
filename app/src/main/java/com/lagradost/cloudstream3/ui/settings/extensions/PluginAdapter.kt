@@ -204,6 +204,7 @@ class PluginAdapter(
         )
 
         binding.subText.isGone = metadata.description.isNullOrBlank()
+        binding.subText.maxLines = 2 // descriptions need more room than the repository urls
         binding.subText.text = metadata.description.html()
     }
 

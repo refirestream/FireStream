@@ -102,10 +102,10 @@
                 android:text="@string/category_account" />
 
             <TextView
-                android:id="@+id/settings_extensions"
+                android:id="@+id/settings_library"
                 style="@style/SettingsItem"
                 android:nextFocusUp="@id/settings_credits"
-                android:text="@string/extensions" />
+                android:text="@string/personal_library" />
 
             <LinearLayout
                 android:id="@+id/app_version_info"

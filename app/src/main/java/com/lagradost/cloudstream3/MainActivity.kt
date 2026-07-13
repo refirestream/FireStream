@@ -32,7 +32,6 @@ import androidx.cardview.widget.CardView
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.core.view.children
-import androidx.core.view.get
 import androidx.core.view.isGone
 import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
@@ -50,7 +49,6 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.LinearSnapHelper
 import androidx.recyclerview.widget.RecyclerView
-import androidx.viewpager2.widget.ViewPager2
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.Session
 import com.google.android.gms.cast.framework.SessionManager
@@ -98,7 +96,6 @@ import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.APP_STR
 import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.APP_STRING_RESUME_WATCHING
 import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.APP_STRING_SEARCH
 import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.APP_STRING_SHARE
-import com.lagradost.cloudstream3.syncproviders.AccountManager.Companion.localListApi
 import com.lagradost.cloudstream3.syncproviders.SyncAPI
 import com.lagradost.cloudstream3.ui.APIRepository
 import com.lagradost.cloudstream3.ui.SyncWatchType
@@ -106,7 +103,6 @@ import com.lagradost.cloudstream3.ui.WatchType
 import com.lagradost.cloudstream3.ui.account.AccountHelper.showAccountSelectLinear
 import com.lagradost.cloudstream3.ui.download.DOWNLOAD_NAVIGATE_TO
 import com.lagradost.cloudstream3.ui.home.HomeViewModel
-import com.lagradost.cloudstream3.ui.library.LibraryViewModel
 import com.lagradost.cloudstream3.ui.player.BasicLink
 import com.lagradost.cloudstream3.ui.player.GeneratorPlayer
 import com.lagradost.cloudstream3.ui.player.LinkGenerator
@@ -516,6 +512,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             R.id.navigation_settings_providers,
             R.id.navigation_settings_general,
             R.id.navigation_settings_extensions,
+            R.id.navigation_settings_repositories,
             R.id.navigation_settings_plugins,
             R.id.navigation_test_providers,
         ).contains(destination.id)
@@ -582,7 +579,17 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 }
 
                 in listOf(
+                    R.id.navigation_settings_extensions,
+                    R.id.navigation_settings_repositories,
+                    R.id.navigation_settings_plugins
+                ) -> {
+                    navRailView.menu.findItem(R.id.navigation_settings_extensions).isChecked = true
+                    navView.menu.findItem(R.id.navigation_settings_extensions).isChecked = true
+                }
+
+                in listOf(
                     R.id.navigation_settings,
+                    R.id.navigation_library,
                     R.id.navigation_subtitles,
                     R.id.navigation_chrome_subtitles,
                     R.id.navigation_settings_player,
@@ -591,8 +598,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                     R.id.navigation_settings_account,
                     R.id.navigation_settings_providers,
                     R.id.navigation_settings_general,
-                    R.id.navigation_settings_extensions,
-                    R.id.navigation_settings_plugins,
                     R.id.navigation_test_providers
                 ) -> {
                     navRailView.menu.findItem(R.id.navigation_settings).isChecked = true
@@ -765,7 +770,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
             // R.id.navigation_home -> R.id.home_preview_change_api
             R.id.navigation_search -> R.id.main_search
-            R.id.navigation_library -> R.id.main_search
+            R.id.navigation_settings_extensions -> R.id.settings_toolbar
             R.id.navigation_downloads -> R.id.download_appbar
             else -> null
         }
@@ -778,7 +783,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                     R.id.navigation_downloads,
                     R.id.navigation_home,
                     R.id.navigation_search,
-                    R.id.navigation_library,
+                    R.id.navigation_settings_extensions,
                     R.id.navigation_settings,
                 )) {
                     fromView.findViewById<View?>(focusView)?.nextFocusRightId = targetView
@@ -845,7 +850,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 
     lateinit var viewModel: ResultViewModel2
     lateinit var syncViewModel: SyncViewModel
-    private var libraryViewModel: LibraryViewModel? = null
 
     /** kinda dirty, however it signals that we should use the watch status as sync or not*/
     var isLocalList: Boolean = false
@@ -1628,30 +1632,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
 //            }
 //        }
 
-        // init accounts
-        ioSafe {
-            // we need to run this after we init all apis, otherwise currentSyncApi will fuck itself
-            this@MainActivity.runOnUiThread {
-                // Change library icon with logo of current api in sync
-                libraryViewModel =
-                    ViewModelProvider(this@MainActivity)[LibraryViewModel::class.java]
-                libraryViewModel?.currentApiName?.observe(this@MainActivity) {
-                    val syncAPI = libraryViewModel?.currentSyncApi
-                    Log.i("SYNC_API", "${syncAPI?.name}, ${syncAPI?.idPrefix}")
-                    val icon = if (syncAPI?.idPrefix == localListApi.idPrefix) {
-                        R.drawable.library_icon_selector
-                    } else {
-                        syncAPI?.icon ?: R.drawable.library_icon_selector
-                    }
-
-                    binding?.apply {
-                        navRailView.menu.findItem(R.id.navigation_library)?.setIcon(icon)
-                        navView.menu.findItem(R.id.navigation_library)?.setIcon(icon)
-                    }
-                }
-            }
-        }
-
         SearchResultBuilder.updateCache(this)
 
         ioSafe {
@@ -1791,7 +1771,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
             for (id in arrayOf(
                 R.id.navigation_home,
                 R.id.navigation_search,
-                R.id.navigation_library,
+                R.id.navigation_settings_extensions,
                 R.id.navigation_downloads,
                 R.id.navigation_settings
             )) {
@@ -1833,23 +1813,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 val recycler = binding?.root?.findViewById<RecyclerView?>(R.id.home_master_recycler)
                 recycler?.smoothScrollToPosition(0)
                 return@setOnLongClickListener recycler != null
-            }
-
-            view?.findViewById<View?>(R.id.navigation_library)?.setOnLongClickListener {
-                val viewPager = binding?.root?.findViewById<ViewPager2?>(R.id.viewpager)
-                    ?: return@setOnLongClickListener false
-                try {
-                    val children = (viewPager[0] as? RecyclerView)?.children
-                        ?: return@setOnLongClickListener false
-                    for (child in children) {
-                        child.findViewById<RecyclerView?>(R.id.page_recyclerview)
-                            ?.smoothScrollToPosition(0)
-                    }
-                } catch (_: IndexOutOfBoundsException) {
-                } catch (t: Throwable) {
-                    logError(t)
-                }
-                return@setOnLongClickListener true
             }
 
             view?.findViewById<View?>(R.id.navigation_search)?.setOnLongClickListener {

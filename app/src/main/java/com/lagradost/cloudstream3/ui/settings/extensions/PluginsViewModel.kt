@@ -57,6 +57,9 @@ class PluginsViewModel : ViewModel() {
 
     val tvTypes = mutableListOf<String>()
     var selectedLanguages = listOf<String>()
+
+    /** Set once the provider language settings have been applied as the default filter */
+    var hasSetDefaultLanguages = false
     private var currentQuery: String? = null
 
     companion object {

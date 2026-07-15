@@ -177,12 +177,12 @@ class PluginAdapter(
         // from doing all these network requests
         /*if (!isLocal) {
             ioSafe {
-                metadata.getVotes().main { votes ->
+                metadata.getScore().main { score ->
                     val currentRecycleCount = (holder as? RepositoryViewHolderState)?.recycleCount
 
                     // Only set the text if the view is correctly rendered
-                    if (currentRecycleCount == oldRecycleCount) {
-                        binding.extVotes.setText(txt(R.string.extension_rating, prettyCount(votes)))
+                    if (currentRecycleCount == oldRecycleCount && score != null) {
+                        binding.extVotes.setText(txt(R.string.extension_rating, "${score.roundToInt()}%"))
                         binding.extVotes.isVisible = true
                     }
                 }

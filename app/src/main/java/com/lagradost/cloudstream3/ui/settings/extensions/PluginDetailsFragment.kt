@@ -9,9 +9,10 @@ import com.lagradost.cloudstream3.CloudStreamApp.Companion.openBrowser
 import com.lagradost.cloudstream3.databinding.FragmentPluginDetailsBinding
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.plugins.VotingApi.canVote
-import com.lagradost.cloudstream3.plugins.VotingApi.getVotes
+import com.lagradost.cloudstream3.plugins.VotingApi.getScore
 import com.lagradost.cloudstream3.plugins.VotingApi.hasVoted
 import com.lagradost.cloudstream3.plugins.VotingApi.vote
+import kotlin.math.roundToInt
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.ui.BaseBottomSheetDialogFragment
 import com.lagradost.cloudstream3.ui.BaseFragment
@@ -127,17 +128,19 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
             }
 
             ioSafe {
-                metadata.getVotes().main {
+                metadata.getScore().main {
                     updateVoting(it)
                 }
             }
         }
     }
 
-    private fun updateVoting(value: Int) {
+    // value = TrustScore percentage (0..100) or null ("New", below the vote threshold).
+    private fun updateVoting(value: Double?) {
         val metadata = data.pluginWrapper.plugin
         binding?.apply {
-            pluginVotes.text = value.toString()
+            pluginVotes.text =
+                if (value == null) getString(R.string.no_data) else "${value.roundToInt()}%"
             if (metadata.hasVoted()) {
                 upvote.imageTintList = ColorStateList.valueOf(
                     context?.colorFromAttribute(R.attr.colorPrimary) ?: R.color.colorPrimary

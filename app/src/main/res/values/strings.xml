@@ -378,6 +378,7 @@
     <string name="random_button_settings">Random Button</string>
     <string name="random_button_settings_desc">Show random button on Homepage and Library</string>
     <string name="provider_lang_settings">Extension languages</string>
+    <string name="provider_lang_filter_tip">Enable additional extension languages under Settings &gt; Extension languages</string>
     <string name="app_layout">App Layout</string>
     <string name="preferred_media_settings">Preferred media</string>
     <string name="enable_nsfw_on_providers">Enable NSFW on supported Extensions</string>
@@ -541,6 +542,13 @@
     <string name="safe_mode_description">All extensions were turned off due to a crash to help you find the one causing trouble.</string>
     <string name="safe_mode_crash_info">View crash info</string>
     <string name="extension_rating" formatted="true">Rating: %s</string>
+    <string name="extension_rating_new">New</string>
+    <string name="extension_rating_percent" formatted="true">%d%%</string>
+    <!-- Content descriptions for the extension score badge tiers -->
+    <string name="extension_rating_certified_description" formatted="true">Highly rated, %d%%</string>
+    <string name="extension_rating_hot_description" formatted="true">Well rated, %d%%</string>
+    <string name="extension_rating_cold_description" formatted="true">Poorly rated, %d%%</string>
+    <string name="extension_rating_new_description">Not rated yet</string>
     <string name="extension_description">Description</string>
     <string name="extension_version">Version</string>
     <string name="extension_status">Status</string>
@@ -646,6 +654,8 @@
     <string name="profile_background_des">Profile background</string>
     <string name="unable_to_inflate">UI was unable to be created correctly, this is a MAJOR BUG and should be reported immediately %s</string>
     <string name="already_voted">You have already voted</string>
+    <string name="upvote">Upvote</string>
+    <string name="downvote">Downvote</string>
     <string name="favorites_list_name">Favorites</string>
     <string name="favorite_added">%s added to favorites</string>
     <string name="favorite_removed">%s removed from favorites</string>

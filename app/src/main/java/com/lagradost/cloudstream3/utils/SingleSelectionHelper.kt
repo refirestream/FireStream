@@ -105,13 +105,15 @@ object SingleSelectionHelper {
         isMultiSelect: Boolean,
         callback: (List<Int>) -> Unit,
         dismissCallback: () -> Unit,
-        itemLayout: Int = R.layout.sort_bottom_single_choice
+        itemLayout: Int = R.layout.sort_bottom_single_choice,
+        subtitle: String? = null
     ) {
         if (this == null) return
 
         val realShowApply = showApply || isMultiSelect
         val listView = binding.listview1
         val textView = binding.text1
+        val subtitleView = binding.text2
         val applyButton = binding.applyBtt
         val cancelButton = binding.cancelBtt
         val applyHolder = binding.applyBttHolder
@@ -130,6 +132,9 @@ object SingleSelectionHelper {
 
         textView.text = name
         textView.isGone = name.isBlank()
+
+        subtitleView.text = subtitle
+        subtitleView.isGone = subtitle.isNullOrBlank()
 
         val arrayAdapter = ArrayAdapter<String>(this, itemLayout)
         arrayAdapter.addAll(items)
@@ -229,6 +234,15 @@ object SingleSelectionHelper {
         name: String,
         dismissCallback: () -> Unit,
         callback: (List<Int>) -> Unit,
+    ) = showMultiDialog(items, selectedIndex, name, null, dismissCallback, callback)
+
+    fun Activity?.showMultiDialog(
+        items: List<String>,
+        selectedIndex: List<Int>,
+        name: String,
+        subtitle: String?,
+        dismissCallback: () -> Unit,
+        callback: (List<Int>) -> Unit,
     ) {
         if (this == null) return
 
@@ -250,7 +264,8 @@ object SingleSelectionHelper {
             showApply = true,
             isMultiSelect = true,
             callback,
-            dismissCallback
+            dismissCallback,
+            subtitle = subtitle
         )
     }
 

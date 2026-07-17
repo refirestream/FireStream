@@ -8,11 +8,10 @@ import androidx.core.view.isVisible
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.openBrowser
 import com.lagradost.cloudstream3.databinding.FragmentPluginDetailsBinding
 import com.lagradost.cloudstream3.plugins.PluginManager
-import com.lagradost.cloudstream3.plugins.VotingApi.canVote
 import com.lagradost.cloudstream3.plugins.VotingApi.getScore
 import com.lagradost.cloudstream3.plugins.VotingApi.hasVoted
 import com.lagradost.cloudstream3.plugins.VotingApi.vote
-import kotlin.math.roundToInt
+import com.lagradost.cloudstream3.plugins.VotingApi.votedDirection
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.ui.BaseBottomSheetDialogFragment
 import com.lagradost.cloudstream3.ui.BaseFragment
@@ -90,10 +89,6 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
                 }
             }
 
-            if (!metadata.canVote()) {
-                upvote.alpha = .6f
-            }
-
             if (data.isDownloaded) {
                 // On local plugins page the filepath is provided instead of url.
                 val plugin =
@@ -120,8 +115,22 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
             }
 
             upvote.setOnClickListener {
+                // Paint the vote immediately; the network round trip only
+                // confirms it. updateVoting reconciles from the stored direction
+                // once vote() returns, reverting the tint if it was rejected
+                // (e.g. extension not installed).
+                applyVoteTint(true)
                 ioSafe {
-                    metadata.vote().main {
+                    metadata.vote(up = true).main {
+                        updateVoting(it)
+                    }
+                }
+            }
+
+            downvote.setOnClickListener {
+                applyVoteTint(false)
+                ioSafe {
+                    metadata.vote(up = false).main {
                         updateVoting(it)
                     }
                 }
@@ -136,20 +145,30 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
     }
 
     // value = TrustScore percentage (0..100) or null ("New", below the vote threshold).
+    // This is the canister's Wilson TrustScore, not a raw upvote count — no count
+    // endpoint exists (see fire-backend/CLAUDE.md). Hence the "%" display.
     private fun updateVoting(value: Double?) {
-        val metadata = data.pluginWrapper.plugin
         binding?.apply {
-            pluginVotes.text =
-                if (value == null) getString(R.string.no_data) else "${value.roundToInt()}%"
-            if (metadata.hasVoted()) {
-                upvote.imageTintList = ColorStateList.valueOf(
-                    context?.colorFromAttribute(R.attr.colorPrimary) ?: R.color.colorPrimary
-                )
-            } else {
-                upvote.imageTintList = ColorStateList.valueOf(
-                    context?.colorFromAttribute(com.google.android.material.R.attr.colorOnSurface) ?: R.color.white
-                )
-            }
+            // Same flame badge as the extension list, so a tier reads the same
+            // in both places. A missing score is a neutral 50%, not "New".
+            FireScore.bind(pluginVotes, value ?: FireScore.DEFAULT_SCORE, iconDp = 20)
+        }
+        // Reconcile the thumbs from the stored direction (source of truth).
+        applyVoteTint(data.pluginWrapper.plugin.votedDirection())
+    }
+
+    /** Tint whichever direction is cast; leave the other neutral. null = neither. */
+    private fun applyVoteTint(direction: Boolean?) {
+        binding?.apply {
+            val active = ColorStateList.valueOf(
+                context?.colorFromAttribute(R.attr.colorPrimary) ?: R.color.colorPrimary
+            )
+            val neutral = ColorStateList.valueOf(
+                context?.colorFromAttribute(com.google.android.material.R.attr.colorOnSurface)
+                    ?: R.color.white
+            )
+            upvote.imageTintList = if (direction == true) active else neutral
+            downvote.imageTintList = if (direction == false) active else neutral
         }
     }
 }

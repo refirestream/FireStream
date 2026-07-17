@@ -1,0 +1,41 @@
+<!--
+    Blue-fire flame for the top ("Blue Fire") rating tier — the hottest kind of
+    flame, so it stands in for the old golden gradient at 80%+.
+
+    Two nested flames like fire_gradient: a deep cyan→indigo body with a
+    white-hot core, so the badge reads as a blue flame with a burning centre
+    rather than a flat blue silhouette. Keep in sync with fire_gradient's paths;
+    only the gradient stops differ.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="283"
+    android:viewportHeight="283">
+    <group android:scaleX="10.3141" android:scaleY="10.3141"
+        android:translateX="17.73" android:translateY="24.59">
+        <path android:pathData="M13.5,0.67C13.5,0.67 14.24,3.32 14.24,5.47C14.24,7.53 12.89,9.2 10.83,9.2C8.76,9.2 7.2,7.53 7.2,5.47L7.23,5.11C5.21,7.51 4,10.62 4,14C4,18.42 7.58,22 12,22C16.42,22 20,18.42 20,14C20,8.61 17.41,3.8 13.5,0.67Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="0" android:startY="0.67"
+                    android:endX="0" android:endY="22">
+                    <item android:offset="0" android:color="#00B0FF"/>
+                    <item android:offset="1" android:color="#2962FF"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+        <path android:pathData="M11.71,19C9.93,19 8.49,17.6 8.49,15.86C8.49,14.24 9.54,13.1 11.3,12.74C13.07,12.38 14.9,11.53 15.92,10.16C16.31,11.45 16.51,12.81 16.51,14.2C16.51,16.85 14.36,19 11.71,19Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="0" android:startY="10.16"
+                    android:endX="0" android:endY="19">
+                    <item android:offset="0" android:color="#E0F7FF"/>
+                    <item android:offset="1" android:color="#40C4FF"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

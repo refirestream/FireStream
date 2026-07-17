@@ -1,5 +1,6 @@
 package com.lagradost.cloudstream3.ui.settings.extensions
 
+import android.app.Activity
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.widget.SearchView
@@ -25,12 +26,26 @@ import com.lagradost.cloudstream3.ui.settings.SettingsFragment.Companion.setUpTo
 import com.lagradost.cloudstream3.utils.AppContextUtils.getApiProviderLangSettings
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showBottomDialog
 import com.lagradost.cloudstream3.utils.SingleSelectionHelper.showMultiDialog
 import com.lagradost.cloudstream3.utils.SubtitleHelper.getNameNextToFlagEmoji
 import com.lagradost.cloudstream3.utils.UIHelper.toPx
 
 const val PLUGINS_BUNDLE_DATA = "data"
 const val PLUGINS_BUNDLE_LOCAL = "isLocal"
+
+/** Shared by both extension lists, which each carry their own copy of the sort menu item. */
+internal fun showSortDialog(activity: Activity?, viewModel: PluginsViewModel) {
+    if (activity == null) return
+    val orders = PluginSortOrder.entries
+    activity.showBottomDialog(
+        orders.map { activity.getString(it.stringRes) },
+        orders.indexOf(viewModel.sortOrder),
+        activity.getString(R.string.sort_by),
+        false,
+        {},
+    ) { index -> orders.getOrNull(index)?.let(viewModel::setSortOrder) }
+}
 
 class PluginsFragment : BaseFragment<FragmentPluginsBinding>(
     BaseFragment.BindingCreator.Inflate(FragmentPluginsBinding::inflate)
@@ -81,6 +96,10 @@ class PluginsFragment : BaseFragment<FragmentPluginsBinding>(
                 when (menuItem?.itemId) {
                     R.id.download_all -> {
                         PluginsViewModel.downloadAll(activity, repositoryData, pluginViewModel)
+                    }
+
+                    R.id.sort_button -> {
+                        showSortDialog(activity, pluginViewModel)
                     }
 
                     R.id.lang_filter -> {

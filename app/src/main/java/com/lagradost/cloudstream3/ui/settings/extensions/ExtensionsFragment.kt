@@ -93,7 +93,17 @@ class ExtensionsFragment : BaseFragment<FragmentExtensionsBinding>(
     }
 
     private fun showLanguageDialog() {
+        val providerLangs = activity?.getApiProviderLangSettings() ?: return
+
+        // Extensions in a language which is not enabled in the settings are never loaded, so only
+        // offer the enabled languages here. "none" is kept as it is the special code for extensions
+        // with an unknown/missing language.
         val languagesTagName = pluginViewModel.pluginLanguages
+            .filter { langTag ->
+                providerLangs.contains(AllLanguagesName) ||
+                        langTag == "none" ||
+                        providerLangs.contains(langTag)
+            }
             .map { langTag ->
                 Pair(
                     langTag,
@@ -112,12 +122,13 @@ class ExtensionsFragment : BaseFragment<FragmentExtensionsBinding>(
 
         val currentIndexList = pluginViewModel.selectedLanguages.map { langTag ->
             languagesTagName.indexOfFirst { lang -> lang.first == langTag }
-        }
+        }.filter { it > -1 }
 
         activity?.showMultiDialog(
             languagesTagName.map { it.second },
             currentIndexList,
             getString(R.string.provider_lang_settings),
+            getString(R.string.provider_lang_filter_tip),
             {}
         ) { selectedList ->
             pluginViewModel.selectedLanguages = selectedList.map { languagesTagName[it].first }
@@ -217,6 +228,7 @@ class ExtensionsFragment : BaseFragment<FragmentExtensionsBinding>(
         binding.settingsToolbar.apply {
             setOnMenuItemClickListener { menuItem ->
                 when (menuItem?.itemId) {
+                    R.id.sort_button -> showSortDialog(activity, pluginViewModel)
                     R.id.lang_filter -> showLanguageDialog()
                     R.id.repositories -> navigateToRepositories()
                     else -> {}

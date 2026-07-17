@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -19,6 +20,8 @@ import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.plugins.PluginManager.getPluginPath
 import com.lagradost.cloudstream3.plugins.PluginWrapper
 import com.lagradost.cloudstream3.plugins.RepositoryManager
+import com.lagradost.cloudstream3.plugins.VotingApi
+import com.lagradost.cloudstream3.utils.PreferenceDelegate
 import com.lagradost.cloudstream3.utils.txt
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import com.lagradost.cloudstream3.utils.Coroutines.main
@@ -30,6 +33,14 @@ import java.io.File
  * The boolean signifies if the plugin list should be scrolled to the top, used for searching.
  * */
 typealias PluginViewDataUpdate = Pair<Boolean, List<PluginViewData>>
+
+/** User-selectable ordering for the extension list, persisted across sessions. */
+enum class PluginSortOrder(@StringRes val stringRes: Int) {
+    NAME_ASC(R.string.sort_alphabetical_a),
+    NAME_DESC(R.string.sort_alphabetical_z),
+    SCORE_DESC(R.string.sort_rating_desc),
+    SCORE_ASC(R.string.sort_rating_asc),
+}
 
 class PluginsViewModel : ViewModel() {
 
@@ -62,9 +73,23 @@ class PluginsViewModel : ViewModel() {
     var hasSetDefaultLanguages = false
     private var currentQuery: String? = null
 
+    val sortOrder: PluginSortOrder
+        get() = PluginSortOrder.entries.getOrElse(storedSortOrder) { PluginSortOrder.SCORE_DESC }
+
+    fun setSortOrder(order: PluginSortOrder) {
+        storedSortOrder = order.ordinal
+        updateFilteredPlugins()
+    }
+
     companion object {
         private val repositoryCache: MutableMap<String, List<PluginWrapper>> = mutableMapOf()
         const val TAG = "PLG"
+
+        /** Ordinal rather than name so a renamed enum entry cannot poison the stored value. */
+        private var storedSortOrder by PreferenceDelegate(
+            "plugin_sort_order",
+            PluginSortOrder.SCORE_DESC.ordinal
+        )
 
         private fun isDownloaded(
             context: Context,
@@ -212,16 +237,63 @@ class PluginsViewModel : ViewModel() {
             getPlugins(repositoryUrl)
         }
 
-        val list = plugins.filter {
+        val visible = plugins.filter {
             // Show all non-nsfw plugins or all if nsfw is enabled
             it.plugin.tvTypes?.contains(TvType.NSFW.name) != true || isAdult
-        }.map { plugin ->
-            PluginViewData(plugin, isDownloaded(context, plugin.plugin.internalName, plugin.repositoryData.url))
+        }
+
+        // Two passes so the list is never blocked on the network: paint with
+        // whatever scores are already cached (however stale), then repaint once
+        // the refreshed ones land. On a warm cache both passes are identical and
+        // DiffUtil settles it into a no-op.
+        val cached = VotingApi.peekScores(visible.map { it.plugin.url })
+        val list = visible.map { plugin ->
+            PluginViewData(
+                plugin,
+                isDownloaded(context, plugin.plugin.internalName, plugin.repositoryData.url),
+                score = cached[plugin.plugin.url],
+                scoreKnown = cached.containsKey(plugin.plugin.url),
+            )
         }
 
         this.plugins = list
+        postFiltered()
+
+        loadScores(list)
+    }
+
+    /**
+     * Refresh the scores for [list] and republish it.
+     *
+     * VotingApi handles the fan-out: cached-and-fresh entries cost nothing and
+     * the rest are queried concurrently under a fixed cap, so a 50-extension
+     * repository is a handful of round trips rather than 50 serial ones.
+     */
+    private fun loadScores(list: List<PluginViewData>) = viewModelScope.launchSafe {
+        val urls = list.mapNotNull { it.pluginWrapper.plugin.url.takeIf { url -> url.startsWith("http") } }
+        if (urls.isEmpty()) return@launchSafe
+
+        val scores = VotingApi.getScores(urls)
+        if (scores.isEmpty()) return@launchSafe
+
+        // The list may have been replaced (repo switch, local view) while the
+        // scores were in flight; only apply them to the list they belong to.
+        if (this@PluginsViewModel.plugins !== list) return@launchSafe
+
+        this@PluginsViewModel.plugins = list.map { data ->
+            val url = data.pluginWrapper.plugin.url
+            if (scores.containsKey(url)) {
+                data.copy(score = scores[url], scoreKnown = true)
+            } else {
+                data
+            }
+        }
+        postFiltered()
+    }
+
+    private fun postFiltered(scrollToTop: Boolean = false) {
         _filteredPlugins.postValue(
-            false to list.filterTvTypes().filterLang().sortByQuery(currentQuery)
+            scrollToTop to plugins.filterTvTypes().filterLang().sortByQuery(currentQuery)
         )
     }
 
@@ -245,10 +317,27 @@ class PluginsViewModel : ViewModel() {
         }
     }
 
+    /**
+     * An extension with no score is a neutral 50%, not a 0% extension, so
+     * unrated ones rank in the middle rather than at either extreme. Name breaks
+     * ties, otherwise equal scores shuffle between refreshes.
+     */
+    private fun List<PluginViewData>.sortByOrder(): List<PluginViewData> {
+        val byName = compareBy<PluginViewData> { it.pluginWrapper.plugin.name }
+        return when (sortOrder) {
+            PluginSortOrder.NAME_ASC -> sortedWith(byName)
+            PluginSortOrder.NAME_DESC -> sortedWith(byName.reversed())
+            PluginSortOrder.SCORE_DESC ->
+                sortedWith(compareByDescending<PluginViewData> { it.score ?: FireScore.DEFAULT_SCORE }.then(byName))
+            PluginSortOrder.SCORE_ASC ->
+                sortedWith(compareBy<PluginViewData> { it.score ?: FireScore.DEFAULT_SCORE }.then(byName))
+        }
+    }
+
     private fun List<PluginViewData>.sortByQuery(query: String?): List<PluginViewData> {
         return if (query.isNullOrBlank()) {
             // Return list to base state if no query
-            this.sortedBy { it.pluginWrapper.plugin.name }
+            this.sortByOrder()
         } else {
             this.mapNotNull {
                 // Try matching name
@@ -272,9 +361,7 @@ class PluginsViewModel : ViewModel() {
     }
 
     fun updateFilteredPlugins() {
-        _filteredPlugins.postValue(
-            false to plugins.filterTvTypes().filterLang().sortByQuery(currentQuery)
-        )
+        postFiltered()
     }
 
     fun clear() {
@@ -293,9 +380,7 @@ class PluginsViewModel : ViewModel() {
 
     fun search(query: String?) {
         currentQuery = query
-        _filteredPlugins.postValue(
-            true to plugins.filterTvTypes().filterLang().sortByQuery(query)
-        )
+        postFiltered(scrollToTop = true)
     }
 
     /**
@@ -310,9 +395,9 @@ class PluginsViewModel : ViewModel() {
                 PluginViewData(PluginWrapper.getLocalPluginWrapper(it.toSitePlugin()), true)
             }
 
+        // No scores here: the local view lists plugins by file path, which is
+        // not a votable subject.
         plugins = downloadedPlugins
-        _filteredPlugins.postValue(
-            false to downloadedPlugins.filterTvTypes().filterLang().sortByQuery(currentQuery)
-        )
+        postFiltered()
     }
 }

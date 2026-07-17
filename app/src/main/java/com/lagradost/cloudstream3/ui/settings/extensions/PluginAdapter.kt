@@ -37,6 +37,15 @@ import kotlin.math.pow
 data class PluginViewData(
     val pluginWrapper: PluginWrapper,
     val isDownloaded: Boolean,
+    /**
+     * TrustScore percentage (0..100) from VotingApi, or null for "New".
+     *
+     * Carried on the view data rather than fetched during bind so the score is
+     * sortable, diffable, and off the bind path. [scoreKnown] separates "not
+     * loaded yet" from a genuine "New".
+     */
+    val score: Double? = null,
+    val scoreKnown: Boolean = false,
 )
 
 class RepositoryViewHolderState(view: ViewBinding) : ViewHolderState<Any>(view) {
@@ -169,25 +178,16 @@ class PluginAdapter(
             binding.langIcon.text = getNameNextToFlagEmoji(metadata.language) ?: metadata.language
         }
 
-        //val oldRecycleCount = (holder as? RepositoryViewHolderState)?.recycleCount
-
-        binding.extVotes.isVisible = false
-
-        // Disable this for now as the vote api is down, this will also significantly improve the lag
-        // from doing all these network requests
-        /*if (!isLocal) {
-            ioSafe {
-                metadata.getScore().main { score ->
-                    val currentRecycleCount = (holder as? RepositoryViewHolderState)?.recycleCount
-
-                    // Only set the text if the view is correctly rendered
-                    if (currentRecycleCount == oldRecycleCount && score != null) {
-                        binding.extVotes.setText(txt(R.string.extension_rating, "${score.roundToInt()}%"))
-                        binding.extVotes.isVisible = true
-                    }
-                }
-            }
-        }*/
+        // Local plugins have no repository URL to score against. Every other row
+        // shows the flame silhouette alone (no % text); a missing score is not
+        // "New" but a neutral 50%, so the badge shows immediately rather than
+        // waiting on the first fetch.
+        if (isLocal) {
+            binding.extVotes.isVisible = false
+        } else {
+            binding.extVotes.isVisible = true
+            FireScore.bind(binding.extVotes, item.score ?: FireScore.DEFAULT_SCORE, showText = false)
+        }
 
         if (metadata.fileSize != null) {
             binding.extFilesize.isVisible = true

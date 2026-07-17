@@ -13,6 +13,11 @@
         app:showAsAction="always|collapseActionView"
         tools:ignore="AppCompatResource" />
     <item
+        android:id="@+id/sort_button"
+        android:icon="@drawable/ic_baseline_sort_24"
+        android:title="@string/sort_by"
+        app:showAsAction="collapseActionView|ifRoom" />
+    <item
         android:id="@+id/lang_filter"
         android:icon="@drawable/ic_baseline_language_24"
         android:title="@string/provider_lang_settings"

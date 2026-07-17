@@ -5,17 +5,30 @@ import android.widget.Toast
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.context
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.getKey
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.setKey
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.R
+import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.utils.Coroutines.main
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.security.MessageDigest
@@ -33,8 +46,16 @@ import java.security.SecureRandom
  * accepted, then re-query the (free) `get_score`. Candid + CBOR are hand-encoded
  * below — the app has no IC agent library.
  *
- * Only up-votes are cast from this client (upvote-only UI); the canister still
- * tracks up/down and returns the combined Wilson TrustScore.
+ * Both up- and down-votes are cast from this client (thumb-up / thumb-down UI);
+ * the canister tracks up/down and returns the combined Wilson TrustScore, which
+ * `get_score` exposes as a percentage (0..100) — never a raw vote count. The UI
+ * therefore shows that TrustScore %, not a number of upvotes (no count endpoint
+ * exists; see fire-backend/CLAUDE.md "Non-goals").
+ *
+ * The anonymous principal is shared by all unauthenticated callers, so the
+ * backend collapses anon votes to one record per subject and lets a caller
+ * switch direction. We mirror that: a stored direction per subject (up/down)
+ * lets the user flip their vote, and re-casting the same direction is a no-op.
  */
 object VotingApi {
     private const val LOGKEY = "VotingApi"
@@ -44,11 +65,16 @@ object VotingApi {
     // Fill these after `dfx deploy fire_backend`:
     //   REPLICA_URL  = http://<lan-host-ip>:4943   (no trailing slash)
     //   CANISTER_ID  = output of `dfx canister id fire_backend`
-    private const val REPLICA_URL = "http://127.0.0.1:4943"
-    private const val CANISTER_ID = "" // e.g. "uxrrr-q7777-77774-qaaaq-cai"
+    private const val REPLICA_URL = "http://192.168.91.130:4943"
+    private const val CANISTER_ID = "uxrrr-q7777-77774-qaaaq-cai"
 
     private val CBOR = "application/cbor".toMediaType()
     private val configured get() = CANISTER_ID.isNotBlank()
+
+    // Post-vote re-read retry: covers the brief window where a get_score query
+    // can still race the just-committed update and read the pre-vote state.
+    private const val RETRY_ATTEMPTS = 5
+    private const val RETRY_DELAY_MS = 400L
 
     private fun transformUrl(url: String): String =
         MessageDigest
@@ -58,45 +84,151 @@ object VotingApi {
 
     suspend fun SitePlugin.getScore(): Double? = getScore(url)
     fun SitePlugin.hasVoted(): Boolean = hasVoted(url)
-    suspend fun SitePlugin.vote(): Double? = vote(url)
-    fun SitePlugin.canVote(): Boolean = canVote(this.url)
+    /** null = not voted, true = up, false = down. */
+    fun SitePlugin.votedDirection(): Boolean? = votedDirection(url)
+    suspend fun SitePlugin.vote(up: Boolean): Double? = vote(url, up)
 
-    // score cache: absent = unknown, present (possibly null) = fetched ("New" = null)
-    private val scoreCache = mutableMapOf<String, Double?>()
+    // --- Score cache -------------------------------------------------------
+    // Two layers, mirroring how the rest of the app caches: an in-memory map
+    // in front of the DataStore (setKey/getKey) SharedPreferences store.
+    // Disk is what lets a cold start paint scores before any network call;
+    // memory keeps list binds off SharedPreferences and JSON parsing.
+    //
+    // Reads are stale-while-revalidate: `peekScores` returns whatever is on
+    // disk however old, so the list renders at once, and `getScores` then
+    // refreshes anything past the TTL.
 
-    suspend fun getScore(pluginUrl: String): Double? {
-        if (scoreCache.containsKey(pluginUrl)) return scoreCache[pluginUrl]
-        return readScore(pluginUrl).also { scoreCache[pluginUrl] = it }
+    /** Persisted cache entry. `score` null = the canister answered "New". */
+    @Serializable
+    data class CachedScore(
+        @JsonProperty("score") @SerialName("score") val score: Double?,
+        @JsonProperty("updatedAt") @SerialName("updatedAt") val updatedAt: Long,
+    )
+
+    private const val SCORE_CACHE_FOLDER = "cs3-score-cache"
+    private const val SCORE_TTL_MS = 6L * 60L * 60L * 1000L
+
+    /**
+     * Cap on simultaneous `get_score` queries. A repository can list 50+
+     * plugins and firing that many sockets at once starves the connection
+     * pool and stalls icon loading in the same list.
+     */
+    private const val SCORE_CONCURRENCY = 8
+
+    private val scoreCache = ConcurrentHashMap<String, CachedScore>()
+
+    /** Shared by `refresh` so one fetch is not tied to a single caller's scope. */
+    private val scoreScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlightLock = Mutex()
+    private val inFlight = ConcurrentHashMap<String, Deferred<Result<Double?>>>()
+
+    private fun scoreKey(pluginUrl: String) =
+        "$SCORE_CACHE_FOLDER/${transformUrl(pluginUrl)}"
+
+    private fun CachedScore.isFresh() =
+        System.currentTimeMillis() - updatedAt < SCORE_TTL_MS
+
+    /** Memory, falling back to disk (promoted into memory on a hit). */
+    private fun cached(pluginUrl: String): CachedScore? =
+        scoreCache[pluginUrl] ?: getKey<CachedScore>(scoreKey(pluginUrl))?.also {
+            scoreCache[pluginUrl] = it
+        }
+
+    private fun store(pluginUrl: String, score: Double?) {
+        val entry = CachedScore(score, System.currentTimeMillis())
+        scoreCache[pluginUrl] = entry
+        setKey(scoreKey(pluginUrl), entry)
     }
 
-    fun hasVoted(pluginUrl: String): Boolean =
-        getKey<Boolean>("cs3-votes/${transformUrl(pluginUrl)}") ?: false
+    /**
+     * Fetch and cache, collapsing concurrent callers for the same URL onto one
+     * query. Failure is distinct from a null score so a network blip is never
+     * cached as "New".
+     */
+    private suspend fun refresh(pluginUrl: String): Result<Double?> {
+        val job = inFlightLock.withLock {
+            inFlight[pluginUrl] ?: scoreScope.async {
+                readScore(pluginUrl).onSuccess { store(pluginUrl, it) }
+            }.also { started ->
+                inFlight[pluginUrl] = started
+                // The entry has to be cleared by the fetch finishing, not by a
+                // caller leaving: a caller cancelled mid-await cannot run a
+                // suspending cleanup, which would strand the finished Deferred
+                // here and serve its value forever in place of the TTL. Fires
+                // inline if the job is already done, so it cannot leak either.
+                started.invokeOnCompletion { inFlight.remove(pluginUrl, started) }
+            }
+        }
+        // Awaiting a job owned by scoreScope: this caller being cancelled must
+        // not cancel the fetch that other callers are sharing.
+        return job.await()
+    }
 
-    fun canVote(pluginUrl: String): Boolean =
-        PluginManager.urlPlugins.contains(pluginUrl)
+    suspend fun getScore(pluginUrl: String): Double? {
+        cached(pluginUrl)?.let { if (it.isFresh()) return it.score }
+        return refresh(pluginUrl).getOrElse { cached(pluginUrl)?.score }
+    }
+
+    /**
+     * Cached scores only, no network and no TTL check — for painting a list
+     * immediately. Absent keys are simply unknown.
+     */
+    suspend fun peekScores(pluginUrls: List<String>): Map<String, Double?> =
+        withContext(Dispatchers.IO) {
+            pluginUrls.distinct().mapNotNull { url ->
+                cached(url)?.let { url to it.score }
+            }.toMap()
+        }
+
+    /**
+     * Scores for a whole list: cached-and-fresh entries cost nothing, the rest
+     * are queried concurrently up to [SCORE_CONCURRENCY]. A URL whose refresh
+     * fails falls back to its stale cached value, and is omitted entirely if
+     * there is none.
+     */
+    suspend fun getScores(pluginUrls: List<String>): Map<String, Double?> =
+        withContext(Dispatchers.IO) {
+            val gate = Semaphore(SCORE_CONCURRENCY)
+            pluginUrls.distinct().amap { url ->
+                val hit = cached(url)
+                if (hit != null && hit.isFresh()) {
+                    url to hit.score
+                } else {
+                    val result = gate.withPermit { refresh(url) }
+                    url to result.getOrElse { hit?.score ?: return@amap null }
+                }
+            }.filterNotNull().toMap()
+        }
+
+    // stored value per subject: true = up, false = down, absent = not voted.
+    fun votedDirection(pluginUrl: String): Boolean? =
+        getKey<Boolean>("cs3-votes/${transformUrl(pluginUrl)}")
+
+    fun hasVoted(pluginUrl: String): Boolean = votedDirection(pluginUrl) != null
 
     private val voteLock = Mutex()
 
-    suspend fun vote(pluginUrl: String): Double? {
+    // Voting is allowed on any extension, installed or not: the subject is the
+    // plugin's URL, which exists in the repository list before download.
+    suspend fun vote(pluginUrl: String, up: Boolean): Double? {
         voteLock.withLock {
-            if (!canVote(pluginUrl)) {
-                main {
-                    Toast.makeText(context, R.string.extension_install_first, Toast.LENGTH_SHORT)
-                        .show()
-                }
-                return getScore(pluginUrl)
-            }
-
-            if (hasVoted(pluginUrl)) {
+            // Same direction already cast → idempotent no-op (matches the canister).
+            if (votedDirection(pluginUrl) == up) {
                 main {
                     Toast.makeText(context, R.string.already_voted, Toast.LENGTH_SHORT).show()
                 }
                 return getScore(pluginUrl)
             }
 
-            if (castVote(pluginUrl, up = true)) {
-                setKey("cs3-votes/${transformUrl(pluginUrl)}", true)
-                scoreCache.remove(pluginUrl) // force a fresh read of the updated score
+            // New vote or a direction switch; the canister handles both.
+            if (castVote(pluginUrl, up)) {
+                setKey("cs3-votes/${transformUrl(pluginUrl)}", up)
+                // The vote just committed, so a score now exists. A query can
+                // still momentarily race the commit and read the pre-vote state
+                // (null); re-read with a short backoff and cache only the
+                // settled value, never a stale null. Caching null here would
+                // pin "No data" until the TTL expires.
+                return readScoreSettled(pluginUrl)?.also { store(pluginUrl, it) }
             }
 
             return getScore(pluginUrl)
@@ -105,17 +237,38 @@ object VotingApi {
 
     // --- Canister calls ----------------------------------------------------
 
-    /** Query `get_score(subject)` -> TrustScore % (0..100) or null ("New"). */
-    private suspend fun readScore(pluginUrl: String): Double? {
+    /**
+     * Query `get_score(subject)` -> TrustScore % (0..100) or null ("New").
+     *
+     * Success means the canister answered; the value inside may still be null
+     * ("New"). Failure means the call did not complete, which callers must not
+     * confuse with "New" — only a success is worth caching.
+     */
+    private suspend fun readScore(pluginUrl: String): Result<Double?> {
         if (!configured) {
             Log.w(LOGKEY, "CANISTER_ID not set; skipping get_score")
-            return null
+            return Result.failure(IllegalStateException("CANISTER_ID not set"))
         }
         val subject = transformUrl(pluginUrl)
         val envelope = queryEnvelope("get_score", candidTextArg(subject))
-        val reply = post("query", envelope) ?: return null
-        val arg = replyArg(reply) ?: return null
-        return decodeOptFloat64(arg)
+        val reply = post("v2", "query", envelope)
+            ?: return Result.failure(IOException("get_score call failed"))
+        val arg = replyArg(reply)
+            ?: return Result.failure(IOException("get_score returned no reply arg"))
+        return Result.success(decodeOptFloat64(arg))
+    }
+
+    /**
+     * `readScore` retried against the commit-vs-query race after a vote. We only
+     * call this right after casting, when a score is guaranteed to exist, so a
+     * null means "not committed yet" — retry a few times before giving up.
+     */
+    private suspend fun readScoreSettled(pluginUrl: String): Double? {
+        repeat(RETRY_ATTEMPTS) { i ->
+            readScore(pluginUrl).getOrNull()?.let { return it }
+            if (i < RETRY_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
+        }
+        return null
     }
 
     /** Update `vote(subject, dir)`. Returns true if the replica accepted it. */
@@ -126,14 +279,18 @@ object VotingApi {
         }
         val subject = transformUrl(pluginUrl)
         val envelope = callEnvelope("vote", candidVoteArg(subject, up))
-        // Anonymous update call: 2xx/202 = accepted. Result is confirmed by the
-        // subsequent get_score re-query, so no read_state polling is needed.
-        return post("call", envelope) != null
+        // Anonymous update call via the v3 *synchronous* endpoint: the replica
+        // holds the response until the call is executed and returns the
+        // certified reply (200), instead of the v2 endpoint's fire-and-forget
+        // 202 that returns before the vote commits. This makes the subsequent
+        // get_score re-query see the committed state. 2xx = accepted; the
+        // readScoreSettled retry covers the rare 202 fallback under load.
+        return post("v3", "call", envelope) != null
     }
 
-    private suspend fun post(endpoint: String, body: ByteArray): ByteArray? =
+    private suspend fun post(apiVersion: String, endpoint: String, body: ByteArray): ByteArray? =
         withContext(Dispatchers.IO) {
-            val url = "$REPLICA_URL/api/v2/canister/$CANISTER_ID/$endpoint"
+            val url = "$REPLICA_URL/api/$apiVersion/canister/$CANISTER_ID/$endpoint"
             Log.d(LOGKEY, "POST $url (${body.size} B cbor)")
             try {
                 val req = Request.Builder().url(url).post(body.toRequestBody(CBOR)).build()
@@ -349,6 +506,9 @@ private class Cbor {
 // Minimal CBOR reader -> Map / List / ByteArray / String / Long.
 // ---------------------------------------------------------------------------
 
+/** Sentinel for the CBOR "break" stop code (0xff) ending an indefinite-length item. */
+private object Break
+
 private class CborReader(private val buf: ByteArray) {
     private var pos = 0
 
@@ -360,12 +520,23 @@ private class CborReader(private val buf: ByteArray) {
             0 -> length(info)                       // unsigned int
             2 -> readBytes(length(info).toInt())    // byte string
             3 -> String(readBytes(length(info).toInt()), Charsets.UTF_8) // text
-            4 -> List(length(info).toInt()) { read() }                   // array
+            4 -> if (info == 31)                     // array, indefinite length
+                buildList { while (true) { val v = read(); if (v === Break) break; add(v) } }
+            else List(length(info).toInt()) { read() }                   // array, definite
             5 -> LinkedHashMap<String, Any?>().apply {                   // map
-                repeat(length(info).toInt()) { put(read().toString(), read()) }
+                if (info == 31) {                    // indefinite length: read pairs until break.
+                    while (true) {
+                        val k = read(); if (k === Break) break
+                        put(k.toString(), read())
+                    }
+                } else repeat(length(info).toInt()) { put(read().toString(), read()) }
             }
-            6 -> read()                             // tag: skip, read payload
-            7 -> if (info == 22 || info == 23) null else length(info) // null/undef/simple
+            6 -> { length(info); read() }           // tag: consume tag arg (e.g. IC self-describe 55799 = d9 d9 f7), then payload
+            7 -> when (info) {                       // simple/float
+                31 -> Break                          // break stop code for indefinite items
+                22, 23 -> null                       // null / undefined
+                else -> length(info)
+            }
             else -> null
         }
     }

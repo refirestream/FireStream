@@ -45,6 +45,11 @@
 
     <color name="adultColor">#FF6F63</color> <!-- same as sub color -->
 
+    <!-- Extension score badge tiers, see FireScore -->
+    <color name="fireScoreBlue">#2E7DFF</color>
+    <color name="fireScoreHot">#FF8F00</color>
+    <color name="fireScoreCold">#78909C</color>
+
     <color name="video_ripple">#80FFFFFF</color>
     <color name="video_button_ripple">#32FFFFFF</color>
 

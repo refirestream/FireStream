@@ -42,12 +42,6 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 /**
- * Metadata only provider backed by [themoviedb.org](https://www.themoviedb.org).
- *
- * It supplies browsing, search and info pages. Like [SimklProvider] it deliberately has no
- * [loadLinks] implementation, every [LoadResponse] is built with blank link data so the app
- * reports "no links found" instead of attempting playback.
- *
  * Based on CineTmdbProvider from the CineStream extension (https://github.com/SaurabhKaperwan/CSX).
  */
 class TmdbFireProvider : MainAPI() {

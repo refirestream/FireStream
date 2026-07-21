@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit
  * Based on CineTmdbProvider from the CineStream extension (https://github.com/SaurabhKaperwan/CSX).
  */
 class TmdbProvider : MainAPI() {
-    override var name = "TMDB"
+    override var name = "TheMovieDB"
     override var mainUrl = "https://www.themoviedb.org"
     override var lang = "en"
     override val hasMainPage = true

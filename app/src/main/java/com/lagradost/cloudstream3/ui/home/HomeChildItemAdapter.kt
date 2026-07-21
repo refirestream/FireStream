@@ -164,12 +164,16 @@ open class HomeChildItemAdapter(
         val sharedPool =
             newSharedPool { setMaxRecycledViews(CONTENT, 20) }
 
+        // Keep in sync with the defaultValue of poster_size_key in settings_ui.xml
+        const val DEFAULT_POSTER_SIZE = 4
+
         var minPosterSize: Int = 0
         var maxPosterSize: Int = 0
 
         fun updatePosterSize(context: Context, value: Int? = null) {
             val scale = value ?: PreferenceManager.getDefaultSharedPreferences(context)
-                ?.getInt(context.getString(R.string.poster_size_key), 0) ?: 0
+                ?.getInt(context.getString(R.string.poster_size_key), DEFAULT_POSTER_SIZE)
+                ?: DEFAULT_POSTER_SIZE
             // Scale by +10% per step
             val mul = 1.0f + scale * 0.1f
             minPosterSize = (114.toPx.toFloat() * mul).toInt()

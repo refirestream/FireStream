@@ -21,6 +21,10 @@ import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchResponse
 import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.ShowStatus
+import com.lagradost.cloudstream3.SourceApi
+import com.lagradost.cloudstream3.SourceApiHolder
+import com.lagradost.cloudstream3.SourceRequest
+import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.addEpisodes
@@ -33,6 +37,9 @@ import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSearchResponseList
 import com.lagradost.cloudstream3.ui.settings.getCurrentLocale
+import com.lagradost.cloudstream3.utils.AppUtils.toJson
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
+import com.lagradost.cloudstream3.utils.ExtractorLink
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -189,12 +196,30 @@ class TmdbFireProvider : MainAPI() {
         val recommendations = media.recommendations?.results?.mapNotNull { it.toSearchResponse(type) }
 
         val isMovie = type == "movie"
+        val tvType = when {
+            isMovie && isAnime -> TvType.AnimeMovie
+            isMovie -> TvType.Movie
+            isAnime -> TvType.Anime
+            else -> TvType.TvSeries
+        }
+
+        // TMDB itself has no links, so what gets stored is everything the sources need to go
+        // looking for them, see loadLinks.
+        val sourceRequest = SourceRequest(
+            title = title,
+            tvType = tvType,
+            originalTitle = media.originalTitle ?: media.originalName,
+            year = year,
+            imdbId = media.externalIds?.imdbId,
+            tmdbId = id.toIntOrNull(),
+        )
+
         if (isMovie) {
             return newMovieLoadResponse(
                 title,
                 url,
-                if (isAnime) TvType.AnimeMovie else TvType.Movie,
-                dataUrl = NO_LINKS
+                tvType,
+                dataUrl = sourceRequest.toJson()
             ) {
                 this.posterUrl = imageUrl(media.posterPath, ORIGINAL_IMAGE_SIZE)
                 this.backgroundPosterUrl = imageUrl(media.backdropPath, ORIGINAL_IMAGE_SIZE)
@@ -230,7 +255,12 @@ class TmdbFireProvider : MainAPI() {
                 ?.flatten()
                 .orEmpty()
                 .map { episode ->
-                    newEpisode(NO_LINKS) {
+                    val episodeRequest = sourceRequest.copy(
+                        season = episode.seasonNumber,
+                        episode = episode.episodeNumber,
+                        airedYear = episode.airDate?.substringBefore('-')?.toIntOrNull(),
+                    )
+                    newEpisode(episodeRequest.toJson()) {
                         this.name = episode.name
                         this.season = episode.seasonNumber
                         this.episode = episode.episodeNumber
@@ -243,11 +273,7 @@ class TmdbFireProvider : MainAPI() {
                 }
         }
 
-        return newAnimeLoadResponse(
-            title,
-            url,
-            if (isAnime) TvType.Anime else TvType.TvSeries
-        ) {
+        return newAnimeLoadResponse(title, url, tvType) {
             addEpisodes(DubStatus.Subbed, episodes)
             this.posterUrl = imageUrl(media.posterPath, ORIGINAL_IMAGE_SIZE)
             this.backgroundPosterUrl = imageUrl(media.backdropPath, ORIGINAL_IMAGE_SIZE)
@@ -269,6 +295,20 @@ class TmdbFireProvider : MainAPI() {
             this.addImdbId(media.externalIds?.imdbId)
             this.addTrailer(trailers)
         }
+    }
+
+    /**
+     * Hands the media over to every registered [SourceApi], as TMDB is a catalogue and holds no
+     * links of its own. [data] is the [SourceRequest] that [load] stored on the movie or episode.
+     */
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val request = tryParseJson<SourceRequest>(data) ?: return false
+        return SourceApiHolder.loadLinksFromSources(request, subtitleCallback, callback)
     }
 
     /** `https://www.themoviedb.org/tv/1234-some-slug` -> `1234` to `tv`. */
@@ -328,6 +368,8 @@ class TmdbFireProvider : MainAPI() {
         @JsonProperty("id") val id: Int? = null,
         @JsonProperty("title") val title: String? = null,
         @JsonProperty("name") val name: String? = null,
+        @JsonProperty("original_title") val originalTitle: String? = null,
+        @JsonProperty("original_name") val originalName: String? = null,
         @JsonProperty("poster_path") val posterPath: String? = null,
         @JsonProperty("backdrop_path") val backdropPath: String? = null,
         @JsonProperty("release_date") val releaseDate: String? = null,
@@ -466,9 +508,6 @@ class TmdbFireProvider : MainAPI() {
     )
 
     companion object {
-        /** Blank link data, [com.lagradost.cloudstream3.ui.APIRepository] treats it as "no links". */
-        private const val NO_LINKS = ""
-
         private const val CACHE_MINUTES = 60
         private const val IMAGE_HOST = "https://image.tmdb.org/t/p"
         private const val DEFAULT_IMAGE_SIZE = "w500"

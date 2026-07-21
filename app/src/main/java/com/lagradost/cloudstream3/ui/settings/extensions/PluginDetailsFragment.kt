@@ -8,6 +8,7 @@ import androidx.core.view.isVisible
 import com.lagradost.cloudstream3.CloudStreamApp.Companion.openBrowser
 import com.lagradost.cloudstream3.databinding.FragmentPluginDetailsBinding
 import com.lagradost.cloudstream3.plugins.PluginManager
+import com.lagradost.cloudstream3.plugins.VotingApi
 import com.lagradost.cloudstream3.plugins.VotingApi.getScore
 import com.lagradost.cloudstream3.plugins.VotingApi.hasVoted
 import com.lagradost.cloudstream3.plugins.VotingApi.vote
@@ -112,6 +113,15 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
                 }
             } else {
                 actionSettings.isVisible = false
+            }
+
+            // Voting is parked (see VotingApi.ENABLED); with no reachable
+            // canister the thumbs and the badge would sit there doing nothing.
+            if (!VotingApi.ENABLED) {
+                pluginVotes.isVisible = false
+                upvote.isVisible = false
+                downvote.isVisible = false
+                return@apply
             }
 
             upvote.setOnClickListener {

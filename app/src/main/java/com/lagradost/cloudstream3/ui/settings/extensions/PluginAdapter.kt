@@ -16,6 +16,7 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.databinding.RepositoryItemBinding
 import com.lagradost.cloudstream3.plugins.PluginManager
 import com.lagradost.cloudstream3.plugins.PluginWrapper
+import com.lagradost.cloudstream3.plugins.VotingApi
 import com.lagradost.cloudstream3.ui.BaseDiffCallback
 import com.lagradost.cloudstream3.ui.NoStateAdapter
 import com.lagradost.cloudstream3.ui.ViewHolderState
@@ -182,7 +183,7 @@ class PluginAdapter(
         // shows the flame silhouette alone (no % text); a missing score is not
         // "New" but a neutral 50%, so the badge shows immediately rather than
         // waiting on the first fetch.
-        if (isLocal) {
+        if (isLocal || !VotingApi.ENABLED) {
             binding.extVotes.isVisible = false
         } else {
             binding.extVotes.isVisible = true

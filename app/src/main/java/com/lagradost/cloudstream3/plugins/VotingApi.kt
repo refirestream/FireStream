@@ -81,11 +81,29 @@ object VotingApi {
     // Fill these after `dfx deploy fire_backend`:
     //   REPLICA_URL  = http://<lan-host-ip>:4943   (no trailing slash)
     //   CANISTER_ID  = output of `dfx canister id fire_backend`
-    private const val REPLICA_URL = "http://192.168.91.130:4943"
+    private const val REPLICA_URL = "" //http://192.168.91.130:4943
     private const val CANISTER_ID = "uxrrr-q7777-77774-qaaaq-cai"
 
+    /**
+     * Master switch for the whole voting feature.
+     *
+     * Off while fire-backend has no permanent home: it only ever ran on a LAN
+     * dfx replica, so every install that is not on that network gets failed
+     * calls and an empty TrustScore. The implementation below is kept intact
+     * and is expected to come back — flip this to true once the canister is
+     * deployed somewhere reachable and [REPLICA_URL] is filled in.
+     *
+     * The UI reads this too, hiding the thumbs and the flame badge rather than
+     * showing controls that cannot do anything.
+     */
+    const val ENABLED = false
+
     private val CBOR = "application/cbor".toMediaType()
-    private val configured get() = CANISTER_ID.isNotBlank()
+
+    // REPLICA_URL is part of the check: an empty host is as unusable as a
+    // missing canister id, and both are how the feature is currently parked.
+    private val configured
+        get() = ENABLED && REPLICA_URL.isNotBlank() && CANISTER_ID.isNotBlank()
 
     // Post-vote re-read retry: covers the brief window where a get_score query
     // can still race the just-committed update and read the pre-vote state.
@@ -268,8 +286,8 @@ object VotingApi {
      */
     private suspend fun readScore(pluginUrl: String): Result<Double?> {
         if (!configured) {
-            Log.w(LOGKEY, "CANISTER_ID not set; skipping get_score")
-            return Result.failure(IllegalStateException("CANISTER_ID not set"))
+            Log.w(LOGKEY, "voting disabled or unconfigured; skipping get_score")
+            return Result.failure(IllegalStateException("voting disabled or unconfigured"))
         }
         val subject = transformUrl(pluginUrl)
         val envelope = queryEnvelope("get_score", candidTextArg(subject))
@@ -296,7 +314,7 @@ object VotingApi {
     /** Update `vote(subject, dir)`. Returns true if the replica accepted it. */
     private suspend fun castVote(pluginUrl: String, up: Boolean): Boolean {
         if (!configured) {
-            Log.w(LOGKEY, "CANISTER_ID not set; cannot vote")
+            Log.w(LOGKEY, "voting disabled or unconfigured; cannot vote")
             return false
         }
         val subject = transformUrl(pluginUrl)

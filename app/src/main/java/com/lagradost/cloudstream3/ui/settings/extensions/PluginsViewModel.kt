@@ -246,7 +246,11 @@ class PluginsViewModel : ViewModel() {
         // whatever scores are already cached (however stale), then repaint once
         // the refreshed ones land. On a warm cache both passes are identical and
         // DiffUtil settles it into a no-op.
-        val cached = VotingApi.peekScores(visible.map { it.plugin.url })
+        val cached = if (VotingApi.ENABLED) {
+            VotingApi.peekScores(visible.map { it.plugin.url })
+        } else {
+            emptyMap()
+        }
         val list = visible.map { plugin ->
             PluginViewData(
                 plugin,
@@ -270,6 +274,9 @@ class PluginsViewModel : ViewModel() {
      * repository is a handful of round trips rather than 50 serial ones.
      */
     private fun loadScores(list: List<PluginViewData>) = viewModelScope.launchSafe {
+        // Parked feature; no canister to ask (see VotingApi.ENABLED).
+        if (!VotingApi.ENABLED) return@launchSafe
+
         val urls = list.mapNotNull { it.pluginWrapper.plugin.url.takeIf { url -> url.startsWith("http") } }
         if (urls.isEmpty()) return@launchSafe
 

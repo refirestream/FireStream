@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.Actor
 import com.lagradost.cloudstream3.ActorData
 import com.lagradost.cloudstream3.BuildConfig
+import com.lagradost.cloudstream3.CloudStreamApp
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.ErrorLoadingException
 import com.lagradost.cloudstream3.HomePageList
@@ -31,6 +32,7 @@ import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSearchResponseList
+import com.lagradost.cloudstream3.ui.settings.getCurrentLocale
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -51,7 +53,30 @@ import java.util.concurrent.TimeUnit
 class TmdbFireProvider : MainAPI() {
     override var name = "TheMovieDB"
     override var mainUrl = "https://www.themoviedb.org"
-    override var lang = "en"
+
+    /**
+     * Follows the app language rather than being pinned to English.
+     *
+     * TMDB is not an English catalogue that happens to be translated, it serves the whole
+     * catalogue in whichever language is asked for, so the provider's language is whatever the
+     * user is reading the app in. This is what the provider language filter matches against
+     * (see `getApiProviderLangSettings`), so a user who narrows that filter to their own
+     * language keeps TMDB instead of losing it.
+     *
+     * Read on every access, because the app language can change after this instance is built:
+     * that only recreates the activity, and the provider list survives it.
+     *
+     * A clone site assigns its own language, which then wins for that instance
+     * (see the `USER_PROVIDER_API` handling in MainActivity).
+     */
+    override var lang: String
+        get() = languageOverride ?: appLanguageCode()
+        set(value) {
+            languageOverride = value
+        }
+
+    private var languageOverride: String? = null
+
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val providerType = ProviderType.MetaProvider
@@ -96,7 +121,8 @@ class TmdbFireProvider : MainAPI() {
             "tv"
         }
         val response = app.get(
-            "$apiUrl/${request.data}&api_key=$apiKey&without_keywords=$ADULT_KEYWORDS&page=$page",
+            "$apiUrl/${request.data}&api_key=$apiKey&language=${appLanguageTag()}" +
+                    "&without_keywords=$ADULT_KEYWORDS&page=$page",
             cacheTime = CACHE_MINUTES,
             cacheUnit = TimeUnit.MINUTES
         ).parsedSafe<Results>() ?: return null
@@ -112,7 +138,7 @@ class TmdbFireProvider : MainAPI() {
 
     override suspend fun search(query: String, page: Int): SearchResponseList {
         val response = app.get(
-            "$apiUrl/search/multi?api_key=$apiKey&language=en-US&query=$query&page=$page"
+            "$apiUrl/search/multi?api_key=$apiKey&language=${appLanguageTag()}&query=$query&page=$page"
         ).parsedSafe<Results>()
 
         return newSearchResponseList(
@@ -129,8 +155,15 @@ class TmdbFireProvider : MainAPI() {
         val (id, type) = parseTmdbUrl(url)
             ?: throw ErrorLoadingException("Not a TMDB media url: $url")
 
+        val languageTag = appLanguageTag()
+        val languageCode = languageTag.substringBefore('-')
+
         val media = app.get(
-            "$apiUrl/$type/$id?api_key=$apiKey&append_to_response=$APPEND_TO_RESPONSE&include_image_language=en,null"
+            "$apiUrl/$type/$id?api_key=$apiKey&language=$languageTag" +
+                    "&append_to_response=$APPEND_TO_RESPONSE" +
+                    // "null" keeps the language-less logos, which are usually the original
+                    // wordmark and the only art many titles have.
+                    "&include_image_language=$languageCode,en,null"
         ).parsedSafe<MediaDetail>() ?: throw ErrorLoadingException("TMDB has no entry for $url")
 
         val title = media.title ?: media.name
@@ -171,13 +204,13 @@ class TmdbFireProvider : MainAPI() {
             ) {
                 this.posterUrl = imageUrl(media.posterPath, ORIGINAL_IMAGE_SIZE)
                 this.backgroundPosterUrl = imageUrl(media.backdropPath, ORIGINAL_IMAGE_SIZE)
-                this.plot = media.overview
+                this.plot = media.overview?.takeIf { it.isNotBlank() }
                 this.tags = keywords?.takeIf { it.isNotEmpty() } ?: genres
                 this.duration = media.runtime
                 this.year = year
                 this.score = Score.from10(media.voteAverage)
                 this.actors = actors
-                this.logoUrl = media.logoUrl
+                this.logoUrl = media.logoUrl(languageCode)
                 this.recommendations = recommendations
                 this.contentRating = media.usAgeRating
                 this.comingSoon = isUpcoming(releaseDate)
@@ -193,8 +226,10 @@ class TmdbFireProvider : MainAPI() {
                 ?.filter { it.seasonNumber != null && it.seasonNumber != 0 }
                 ?.map { season ->
                     async {
-                        app.get("$apiUrl/tv/$id/season/${season.seasonNumber}?api_key=$apiKey")
-                            .parsedSafe<SeasonDetail>()?.episodes.orEmpty()
+                        app.get(
+                            "$apiUrl/tv/$id/season/${season.seasonNumber}" +
+                                    "?api_key=$apiKey&language=$languageTag"
+                        ).parsedSafe<SeasonDetail>()?.episodes.orEmpty()
                     }
                 }
                 ?.awaitAll()
@@ -222,13 +257,13 @@ class TmdbFireProvider : MainAPI() {
             addEpisodes(DubStatus.Subbed, episodes)
             this.posterUrl = imageUrl(media.posterPath, ORIGINAL_IMAGE_SIZE)
             this.backgroundPosterUrl = imageUrl(media.backdropPath, ORIGINAL_IMAGE_SIZE)
-            this.plot = media.overview
+            this.plot = media.overview?.takeIf { it.isNotBlank() }
             this.tags = keywords?.takeIf { it.isNotEmpty() } ?: genres
             this.duration = media.episodeRunTime?.firstOrNull()
             this.year = year
             this.score = Score.from10(media.voteAverage)
             this.actors = actors
-            this.logoUrl = media.logoUrl
+            this.logoUrl = media.logoUrl(languageCode)
             this.showStatus = when (media.status) {
                 "Returning Series", "In Production" -> ShowStatus.Ongoing
                 "Ended", "Canceled" -> ShowStatus.Completed
@@ -336,17 +371,18 @@ class TmdbFireProvider : MainAPI() {
             }
 
         /**
-         * Best english title logo, preferring a raster image as the app cannot render the svg
-         * ones TMDB also serves.
+         * Best title logo for [preferredLanguage], falling back to English and then to whatever
+         * exists. Raster images are preferred throughout, as the app cannot render the svg ones
+         * TMDB also serves.
          */
-        val logoUrl: String?
-            get() {
-                val logos = images?.logos?.filter { !it.filePath.isNullOrBlank() } ?: return null
-                val logo = logos.firstOrNull { it.language == "en" && !it.isSvg }
-                    ?: logos.firstOrNull { !it.isSvg }
-                    ?: logos.firstOrNull()
-                return logo?.filePath?.let { "$IMAGE_HOST/$DEFAULT_IMAGE_SIZE$it" }
-            }
+        fun logoUrl(preferredLanguage: String): String? {
+            val logos = images?.logos?.filter { !it.filePath.isNullOrBlank() } ?: return null
+            val logo = logos.firstOrNull { it.language == preferredLanguage && !it.isSvg }
+                ?: logos.firstOrNull { it.language == "en" && !it.isSvg }
+                ?: logos.firstOrNull { !it.isSvg }
+                ?: logos.firstOrNull()
+            return logo?.filePath?.let { "$IMAGE_HOST/$DEFAULT_IMAGE_SIZE$it" }
+        }
     }
 
     data class NamedEntry(
@@ -463,5 +499,23 @@ class TmdbFireProvider : MainAPI() {
         private fun today() = date()
         private fun nextWeek() = date(7)
         private fun lastWeek() = date(-7)
+
+        /**
+         * App locale as an IETF tag, which is the form TMDB's `language` parameter takes
+         * ("pt-BR" gets Brazilian Portuguese where "pt" would get European).
+         *
+         * Falls back to English if the app context has been collected, which only happens
+         * outside a running app.
+         */
+        private fun appLanguageTag(): String =
+            CloudStreamApp.context?.let { getCurrentLocale(it) } ?: DEFAULT_LANGUAGE_TAG
+
+        /**
+         * The tag reduced to its language subtag, e.g. "pt-BR" -> "pt". The provider language
+         * filter and its flag lookup both work in bare ISO 639-1 codes.
+         */
+        private fun appLanguageCode(): String = appLanguageTag().substringBefore('-')
+
+        private const val DEFAULT_LANGUAGE_TAG = "en-US"
     }
 }

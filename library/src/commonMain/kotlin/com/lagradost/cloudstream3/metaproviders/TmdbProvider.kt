@@ -419,4 +419,4 @@ open class TmdbProvider : MainAPI() {
                 it.movie?.toSearchResponse() ?: it.tvShow?.toSearchResponse()
             }?.toNewSearchResponseList()
     }
-}
+} // not to be mistaken with the new enhanced TmdbFireProvider

@@ -86,11 +86,11 @@ android {
         // We just use SIGNING_KEY_ALIAS here since it won't change
         // so won't kill the configuration cache.
         if (System.getenv("SIGNING_KEY_ALIAS") != null) {
-            create("prerelease") {
+            create("alpha") {
                 val tmpFilePath = System.getProperty("user.home") + "/work/_temp/keystore/"
-                val prereleaseStoreFile: File? = File(tmpFilePath).listFiles()?.first()
+                val alphaStoreFile: File? = File(tmpFilePath).listFiles()?.first()
 
-                storeFile = prereleaseStoreFile?.let { file(it) }
+                storeFile = alphaStoreFile?.let { file(it) }
                 storePassword = System.getenv("SIGNING_STORE_PASSWORD")
                 keyAlias = System.getenv("SIGNING_KEY_ALIAS")
                 keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
@@ -174,15 +174,15 @@ android {
         create("stable") {
             dimension = "state"
         }
-        create("prerelease") {
+        create("alpha") {
             dimension = "state"
-            applicationIdSuffix = ".prerelease"
-            if (signingConfigs.names.contains("prerelease")) {
-                signingConfig = signingConfigs.getByName("prerelease")
+            applicationIdSuffix = ".alpha"
+            if (signingConfigs.names.contains("alpha")) {
+                signingConfig = signingConfigs.getByName("alpha")
             } else {
-                logger.warn("No prerelease signing config!")
+                logger.warn("No alpha signing config!")
             }
-            versionNameSuffix = "-PRE"
+            versionNameSuffix = "-ALPHA"
             versionCode = (System.currentTimeMillis() / 60000).toInt()
         }
     }
@@ -306,7 +306,7 @@ tasks.register<Jar>("androidSourcesJar") {
 tasks.register<Copy>("copyJar") {
     dependsOn("build", ":library:jvmJar")
     from(
-        "build/intermediates/compile_app_classes_jar/prereleaseDebug/bundlePrereleaseDebugClassesToCompileJar",
+        "build/intermediates/compile_app_classes_jar/alphaDebug/bundleAlphaDebugClassesToCompileJar",
         "../library/build/libs"
     )
     into("build/app-classes")
@@ -345,7 +345,7 @@ dokka {
     moduleName = "App"
     dokkaSourceSets {
         configureEach {
-            suppress = name != "prereleaseDebug"
+            suppress = name != "alphaDebug"
             analysisPlatform = KotlinPlatform.JVM
             displayName = "JVM"
             documentedVisibilities(

@@ -88,7 +88,7 @@ object InAppUpdater {
             when {
                 // No updates on debug version
                 BuildConfig.DEBUG -> Update(false, null, null, null, null)
-                BuildConfig.FLAVOR == "prerelease" || installPrerelease -> getPreReleaseUpdate()
+                BuildConfig.FLAVOR == "alpha" || installPrerelease -> getPreReleaseUpdate()
                 else -> getReleaseUpdate()
             }
         } catch (e: Exception) {

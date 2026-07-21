@@ -80,7 +80,7 @@ jobs:
         api-level: ${{ steps.sdk.outputs.version }}
         arch: x86_64
         profile: Nexus 6
-        script: ./gradlew connectedPrereleaseDebugAndroidTest
+        script: ./gradlew connectedAlphaDebugAndroidTest
 
     - name: Upload Test Results
       if: always()

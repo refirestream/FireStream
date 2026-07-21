@@ -43,7 +43,7 @@ class SetupFragmentLanguage : BaseFragment<FragmentSetupLanguageBinding>(
                 safe {
                     val drawable = when {
                         BuildConfig.DEBUG -> R.drawable.fire_gradient_debug
-                        BuildConfig.FLAVOR == "prerelease" -> R.drawable.fire_gradient_beta
+                        BuildConfig.FLAVOR == "alpha" -> R.drawable.fire_gradient_beta
                         else -> R.drawable.fire_gradient
                     }
                     appIconImage.setImageDrawable(ContextCompat.getDrawable(ctx, drawable))

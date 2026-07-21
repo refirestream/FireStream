@@ -3,6 +3,8 @@ package com.lagradost.cloudstream3.plugins
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.APIHolder
 import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.SourceApi
+import com.lagradost.cloudstream3.SourceApiHolder
 import com.lagradost.cloudstream3.utils.ExtractorApi
 import com.lagradost.api.Log
 import com.lagradost.cloudstream3.utils.extractorApis
@@ -22,6 +24,16 @@ abstract class BasePlugin {
         element.sourcePlugin = this.filename
         APIHolder.allProviders.add(element)
         APIHolder.addPluginMapping(element)
+    }
+
+    /**
+     * Used to register source instances of SourceApi
+     * @param element SourceApi source you want to register
+     */
+    fun registerSourceAPI(element: SourceApi) {
+        Log.i(PLUGIN_TAG, "Adding ${element.name} (${element.id}) SourceApi")
+        element.sourcePlugin = this.filename
+        SourceApiHolder.registerSource(element)
     }
 
     /**

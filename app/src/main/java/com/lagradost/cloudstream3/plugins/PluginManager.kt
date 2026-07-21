@@ -35,6 +35,7 @@ import com.lagradost.cloudstream3.MainActivity.Companion.lastError
 import com.lagradost.cloudstream3.PROVIDER_STATUS_DOWN
 import com.lagradost.cloudstream3.PROVIDER_STATUS_OK
 import com.lagradost.cloudstream3.R
+import com.lagradost.cloudstream3.SourceApiHolder
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.actions.VideoClickAction
 import com.lagradost.cloudstream3.actions.VideoClickActionHolder
@@ -711,6 +712,10 @@ object PluginManager {
 
         extractorApis.withLock {
             extractorApis.removeAll { provider -> provider.sourcePlugin == plugin.filename }
+        }
+
+        SourceApiHolder.allSources.withLock {
+            SourceApiHolder.allSources.removeAll { source -> source.sourcePlugin == plugin.filename }
         }
 
         VideoClickActionHolder.allVideoClickActions.withLock {

@@ -78,6 +78,7 @@ import com.lagradost.cloudstream3.actions.temp.fcast.FcastManager
 import com.lagradost.cloudstream3.databinding.ActivityMainBinding
 import com.lagradost.cloudstream3.databinding.ActivityMainTvBinding
 import com.lagradost.cloudstream3.databinding.BottomResultviewPreviewBinding
+import com.lagradost.cloudstream3.metaproviders.TmdbProvider
 import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.mvvm.safe
@@ -809,6 +810,18 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         } catch (e: IllegalArgumentException) {
             Log.e("NavigationError", "Failed to navigate: ${e.message}")
             false
+        }
+    }
+
+    /**
+     * Registers the providers that ship with the app instead of coming from a plugin repository.
+     * Idempotent, as the activity may be recreated during the lifetime of the process.
+     */
+    private fun registerBuiltInProviders() {
+        allProviders.withLock {
+            if (allProviders.none { it is TmdbProvider }) {
+                allProviders.add(TmdbProvider())
+            }
         }
     }
 
@@ -1635,6 +1648,7 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
         SearchResultBuilder.updateCache(this)
 
         ioSafe {
+            registerBuiltInProviders()
             initAll()
             // No duplicates (which can happen by registerMainAPI)
             apis = allProviders.distinctBy { it }

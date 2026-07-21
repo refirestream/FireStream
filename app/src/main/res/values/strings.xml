@@ -185,6 +185,9 @@
     <string name="category_account">Accounts and Security</string>
     <string name="category_updates">Updates and Backup</string>
     <string name="settings_info">Info</string>
+    <!-- Wording and logo are mandated by the TMDB API terms of use, do not translate or reword -->
+    <string name="tmdb_attribution" translatable="false">This application uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.</string>
+    <string name="tmdb_logo_description" translatable="false">TMDB</string>
     <string name="advanced_search">Advanced Search</string>
     <string name="advanced_search_des">Gives you the search results separated by provider</string>
     <string name="search_suggestions">Search Suggestions</string>

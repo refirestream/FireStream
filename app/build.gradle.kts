@@ -129,6 +129,15 @@ android {
         )
         buildConfigField(
             "String",
+            "TMDB_API_KEY",
+            // Falls back to the key the search suggestions have always shipped with, as TMDB
+            // metadata is a built in feature and must work without a local key.
+            "\"" + (System.getenv("TMDB_API_KEY")
+                ?: localProperties["tmdb.key"]
+                ?: "e6333b32409e02a4a6eba6fb7ff866bb") + "\""
+        )
+        buildConfigField(
+            "String",
             "MAL_KEY",
             "\"" + (System.getenv("MAL_KEY") ?: localProperties["mal.key"]) + "\""
         )

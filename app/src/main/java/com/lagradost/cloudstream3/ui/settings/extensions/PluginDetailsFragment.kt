@@ -144,7 +144,11 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
         }
     }
 
-    // value = TrustScore percentage (0..100) or null ("New", below the vote threshold).
+    // value = TrustScore percentage (0..100), or null when the canister has no
+    // signal for this subject: either it was never voted on, or all of its votes
+    // have decayed to zero weight. There is no raw-count threshold to cross —
+    // one live vote is enough to be scored, because the Wilson centre already
+    // shrinks a small sample back toward the neutral 50%.
     // This is the canister's Wilson TrustScore, not a raw upvote count — no count
     // endpoint exists (see fire-backend/CLAUDE.md). Hence the "%" display.
     private fun updateVoting(value: Double?) {
@@ -153,7 +157,9 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
             // in both places. A missing score is a neutral 50%, not "New".
             FireScore.bind(pluginVotes, value ?: FireScore.DEFAULT_SCORE, iconDp = 20)
         }
-        // Reconcile the thumbs from the stored direction (source of truth).
+        // Reconcile the thumbs from the locally stored direction — the only
+        // record of which way this install voted. Anonymous ballots carry no
+        // identity, so the canister cannot be asked "how did I vote?".
         applyVoteTint(data.pluginWrapper.plugin.votedDirection())
     }
 

@@ -53,9 +53,25 @@ import java.security.SecureRandom
  * exists; see fire-backend/CLAUDE.md "Non-goals").
  *
  * The anonymous principal is shared by all unauthenticated callers, so the
- * backend collapses anon votes to one record per subject and lets a caller
- * switch direction. We mirror that: a stored direction per subject (up/down)
- * lets the user flip their vote, and re-casting the same direction is a no-op.
+ * backend deliberately does *not* key a record on it: every anonymous call is an
+ * independent ballot that only adds to the subject's accumulator. (It used to
+ * store one record per subject, which made the entire anonymous population count
+ * as a single voter — the 2nd anon vote hit the 1st one's record and either
+ * no-op'd or overwrote it.)
+ *
+ * An anonymous ballot is consequently write-only: it cannot be de-duplicated or
+ * retracted, because there is nothing to identify it by. Only an identified
+ * (non-anonymous) caller gets a switchable record. This is the accepted
+ * trade-off, not a gap to work around — see fire-backend/CLAUDE.md, "Two ballot
+ * kinds".
+ *
+ * So the stored direction per subject here is **local UI state**, not a mirror
+ * of backend state. It drives which thumb renders as selected and suppresses a
+ * same-direction re-cast client-side (that call never reaches the canister).
+ * A flip does reach the canister, and lands as an additional opposing ballot
+ * rather than replacing the first: one user going up -> down leaves the subject
+ * holding one up and one down (~50%). Intended — the canister is counting
+ * ballots, and it has no way to know those two came from the same person.
  */
 object VotingApi {
     private const val LOGKEY = "VotingApi"
@@ -212,7 +228,10 @@ object VotingApi {
     // plugin's URL, which exists in the repository list before download.
     suspend fun vote(pluginUrl: String, up: Boolean): Double? {
         voteLock.withLock {
-            // Same direction already cast → idempotent no-op (matches the canister).
+            // Same direction already cast → no-op. This guard is the only thing
+            // making a re-cast idempotent: an anonymous ballot is write-only on
+            // the canister side, so a second identical call would be counted
+            // again rather than recognised as a repeat.
             if (votedDirection(pluginUrl) == up) {
                 main {
                     Toast.makeText(context, R.string.already_voted, Toast.LENGTH_SHORT).show()
@@ -220,7 +239,10 @@ object VotingApi {
                 return getScore(pluginUrl)
             }
 
-            // New vote or a direction switch; the canister handles both.
+            // New vote, or the user flipping their thumb. Both are sent as a
+            // plain ballot: the canister adds it to the subject's accumulator,
+            // and a flip therefore offsets the earlier ballot rather than
+            // replacing it. The stored key below tracks the UI selection only.
             if (castVote(pluginUrl, up)) {
                 setKey("cs3-votes/${transformUrl(pluginUrl)}", up)
                 // The vote just committed, so a score now exists. A query can

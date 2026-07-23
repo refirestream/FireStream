@@ -677,4 +677,5 @@
     <string name="confirm_before_exiting_title">Bevestig voor afsluiten</string>
     <string name="confirm_before_exiting_desc">Toon dialoogvenster voordat de app wordt afgesloten</string>
     <string name="subs_edge_size">Randgrote</string>
+    <string name="extensions_safety_warning">Extensies kunnen onveilig zijn en willekeurige code uitvoeren. Ze worden gemaakt door de community en worden op geen enkele manier onderschreven door de ontwikkelaar.\n\nElke gebruiker is zelf verantwoordelijk voor wat hij installeert.</string>
 </resources>

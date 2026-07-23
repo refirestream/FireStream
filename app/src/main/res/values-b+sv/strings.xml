@@ -735,4 +735,5 @@
     <string name="video_singular">Video</string>
     <string name="skip_type_preview">Förhandsvisning</string>
     <string name="player_is_live">Live</string>
+    <string name="extensions_safety_warning">Tillägg kan vara osäkra och köra godtycklig kod. De skapas av gemenskapen och stöds inte på något sätt av utvecklaren.\n\nVarje användare ansvarar själv för vad de installerar.</string>
 </resources>

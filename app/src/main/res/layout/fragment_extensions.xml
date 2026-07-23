@@ -63,7 +63,7 @@
             android:layout_height="wrap_content"
             android:layout_margin="20dp"
             android:gravity="center"
-            android:text="@string/blank_repo_message"
+            android:text="@string/extensions_safety_warning"
             android:textSize="16sp" />
 
         <com.google.android.material.button.MaterialButton

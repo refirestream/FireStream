@@ -747,4 +747,5 @@
     <string name="video_singular">影片</string>
     <string name="skip_type_preview">預覽</string>
     <string name="player_is_live">播放中</string>
+    <string name="extensions_safety_warning">擴充功能可能不安全並會執行任意程式碼。它們由社群製作，未獲得開發者的任何認可。\n\n每位使用者須自行對所安裝的內容負責。</string>
 </resources>

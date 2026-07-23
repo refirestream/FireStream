@@ -739,4 +739,5 @@
     <string name="video_singular">Видео</string>
     <string name="skip_type_preview">Предпросмотр</string>
     <string name="player_is_live">Прямой эфир</string>
+    <string name="extensions_safety_warning">Расширения могут быть небезопасными и выполнять произвольный код. Они создаются сообществом и никак не одобрены разработчиком.\n\nКаждый пользователь сам отвечает за то, что устанавливает.</string>
 </resources>

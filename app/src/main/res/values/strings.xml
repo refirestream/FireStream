@@ -530,6 +530,9 @@
     <string name="blank_repo_message">FireStream has no sites installed by default. You need to install the sites from repositories.
 \n
 \nJoin our Discord or search online.</string>
+    <string name="extensions_safety_warning">Extensions can be unsafe and may run arbitrary code. They are created by the community and are not endorsed in any way by the developer.
+\n
+\nEach user is responsible for what they install.</string>
     <string name="view_public_repositories_button">View community repositories</string>
     <string name="view_public_repositories_button_short">Public list</string>
     <string name="uppercase_all_subtitles">Uppercase all subtitles</string>

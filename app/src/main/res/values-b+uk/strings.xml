@@ -739,4 +739,5 @@
     <string name="video_singular">Відео</string>
     <string name="skip_type_preview">Передперегляд</string>
     <string name="player_is_live">Наживо</string>
+    <string name="extensions_safety_warning">Розширення можуть бути небезпечними та виконувати довільний код. Вони створюються спільнотою й жодним чином не схвалені розробником.\n\nКожен користувач сам відповідає за те, що встановлює.</string>
 </resources>

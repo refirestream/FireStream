@@ -733,4 +733,5 @@
     <string name="video_singular">비디오</string>
     <string name="skip_type_preview">프리뷰</string>
     <string name="player_is_live">라이브</string>
+    <string name="extensions_safety_warning">확장 기능은 안전하지 않을 수 있으며 임의의 코드를 실행할 수 있습니다. 커뮤니티에서 제작되었으며 개발자가 어떤 방식으로도 보증하지 않습니다.\n\n설치하는 항목에 대한 책임은 각 사용자에게 있습니다.</string>
 </resources>

@@ -747,4 +747,5 @@
     <string name="video_singular">视频</string>
     <string name="skip_type_preview">预览</string>
     <string name="player_is_live">播放中</string>
+    <string name="extensions_safety_warning">扩展可能不安全并会执行任意代码。它们由社区创建，未获得开发者的任何认可。\n\n每位用户须自行对所安装的内容负责。</string>
 </resources>

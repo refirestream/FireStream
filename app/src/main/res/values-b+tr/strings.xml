@@ -749,4 +749,5 @@
     <string name="player_is_live">Canlı</string>
     <string name="skip_type_preview">Ön Gösterim</string>
     <string name="video_singular">Video</string>
+    <string name="extensions_safety_warning">Eklentiler güvensiz olabilir ve rastgele kod çalıştırabilir. Topluluk tarafından oluşturulur ve geliştirici tarafından hiçbir şekilde onaylanmaz.\n\nHer kullanıcı yüklediği şeylerden kendisi sorumludur.</string>
 </resources>

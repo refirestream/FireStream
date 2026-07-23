@@ -738,4 +738,5 @@
     <string name="video_singular">Vidéo</string>
     <string name="skip_type_preview">Prévisualisation</string>
     <string name="player_is_live">Direct</string>
+    <string name="extensions_safety_warning">Les extensions peuvent être dangereuses et exécuter du code arbitraire. Elles sont créées par la communauté et ne sont en aucun cas approuvées par le développeur.\n\nChaque utilisateur est responsable de ce qu\'il installe.</string>
 </resources>

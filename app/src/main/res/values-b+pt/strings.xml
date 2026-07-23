@@ -737,4 +737,5 @@
     <string name="video_singular">Vídeo</string>
     <string name="skip_type_preview">Pré-visualização</string>
     <string name="player_is_live">Ao Vivo</string>
+    <string name="extensions_safety_warning">As extensões podem ser inseguras e executar código arbitrário. São criadas pela comunidade e não são de forma alguma aprovadas pelo programador.\n\nCada utilizador é responsável por aquilo que instala.</string>
 </resources>

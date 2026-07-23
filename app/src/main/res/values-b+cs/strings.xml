@@ -754,4 +754,5 @@
     <string name="video_singular">Video</string>
     <string name="skip_type_preview">Náhled</string>
     <string name="player_is_live">Živě</string>
+    <string name="extensions_safety_warning">Rozšíření mohou být nebezpečná a mohou spouštět libovolný kód. Jsou vytvářena komunitou a nejsou nijak schvalována vývojářem.\n\nKaždý uživatel je zodpovědný za to, co si nainstaluje.</string>
 </resources>

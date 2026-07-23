@@ -735,4 +735,5 @@
     <string name="video_singular">Video</string>
     <string name="skip_type_preview">Vorschau</string>
     <string name="player_is_live">Live</string>
+    <string name="extensions_safety_warning">Erweiterungen können unsicher sein und beliebigen Code ausführen. Sie werden von der Community erstellt und in keiner Weise vom Entwickler unterstützt.\n\nJeder Nutzer ist selbst dafür verantwortlich, was er installiert.</string>
 </resources>

@@ -759,4 +759,5 @@
     <string name="video_singular">Video</string>
     <string name="skip_type_preview">Anteprima</string>
     <string name="player_is_live">Live</string>
+    <string name="extensions_safety_warning">Le estensioni possono essere pericolose ed eseguire codice arbitrario. Sono create dalla community e non sono in alcun modo approvate dallo sviluppatore.\n\nOgni utente è responsabile di ciò che installa.</string>
 </resources>

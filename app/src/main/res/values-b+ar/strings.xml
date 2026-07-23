@@ -756,4 +756,5 @@
     <string name="video_singular">مقطع</string>
     <string name="skip_type_preview">استعراض</string>
     <string name="player_is_live">البث قائم</string>
+    <string name="extensions_safety_warning">قد تكون الإضافات غير آمنة وقد تُشغّل تعليمات برمجية عشوائية. يتم إنشاؤها من قبل المجتمع وغير معتمدة بأي شكل من الأشكال من قبل المطوّر.\n\nكل مستخدم مسؤول عمّا يقوم بتثبيته.</string>
 </resources>

@@ -45,6 +45,8 @@ Then:
 - Throwing is contained to your source, but return `false` rather than throwing when you simply
   found nothing.
 - `SourceApiHolder.allSources` is the registry, unload strips sources by `sourcePlugin`.
+- A source that ships with the app instead lives in `library/.../cloudstream3/sources/` and is
+  registered in `MainActivity.registerBuiltInProviders`, see `PublicDomainMovieSource`.
 
 Tests live in `library/src/commonTest/.../SourceApiTest.kt`, run with
 `./gradlew :library:jvmTest --tests "com.lagradost.cloudstream3.SourceApiTest"`.

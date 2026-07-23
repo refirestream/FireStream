@@ -537,11 +537,14 @@ class TmdbFireProvider : MainAPI() {
          * App locale as an IETF tag, which is the form TMDB's `language` parameter takes
          * ("pt-BR" gets Brazilian Portuguese where "pt" would get European).
          *
-         * Falls back to English if the app context has been collected, which only happens
-         * outside a running app.
+         * Falls back to English when there is no app to read a language off, which is the case
+         * both before the context is attached and outside the app entirely: running the provider
+         * against CloudstreamApi has no Android to load [CloudStreamApp] against, so reaching for
+         * it throws rather than returning null.
          */
         private fun appLanguageTag(): String =
-            CloudStreamApp.context?.let { getCurrentLocale(it) } ?: DEFAULT_LANGUAGE_TAG
+            runCatching { CloudStreamApp.context?.let { getCurrentLocale(it) } }.getOrNull()
+                ?: DEFAULT_LANGUAGE_TAG
 
         /**
          * The tag reduced to its language subtag, e.g. "pt-BR" -> "pt". The provider language

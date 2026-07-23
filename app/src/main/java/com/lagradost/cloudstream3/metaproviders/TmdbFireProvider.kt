@@ -52,7 +52,7 @@ import java.util.concurrent.TimeUnit
  * Based on CineTmdbProvider from the CineStream extension (https://github.com/SaurabhKaperwan/CSX).
  */
 class TmdbFireProvider : MainAPI() {
-    override var name = "TheMovieDB"
+    override var name = PROVIDER_NAME
     override var mainUrl = "https://www.themoviedb.org"
 
     /**
@@ -568,6 +568,13 @@ class TmdbFireProvider : MainAPI() {
     )
 
     companion object {
+        /**
+         * The provider's display name, also the app's default homepage provider (see
+         * [DataStoreHelper.currentHomePage]). Referenced instead of the literal so a rename stays
+         * in one place.
+         */
+        const val PROVIDER_NAME = "TheMovieDB"
+
         private const val CACHE_MINUTES = 60
         private const val BACKDROP_CACHE_HOURS = 48
 

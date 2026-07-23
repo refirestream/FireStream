@@ -16,6 +16,7 @@ import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.EpisodeResponse
 import com.lagradost.cloudstream3.MainActivity
 import com.lagradost.cloudstream3.R
+import com.lagradost.cloudstream3.metaproviders.TmdbFireProvider
 import com.lagradost.cloudstream3.Score
 import com.lagradost.cloudstream3.SearchQuality
 import com.lagradost.cloudstream3.SearchResponse
@@ -174,9 +175,13 @@ object DataStoreHelper {
     /**
      * Get or set the current account homepage.
      * Setting this does not automatically reload the homepage.
+     *
+     * Defaults to the built-in [TmdbFireProvider] when the account has never picked one (or reset
+     * back to the default via a null set), so a fresh install opens on TheMovieDB rather than the
+     * empty "None" homepage.
      */
     var currentHomePage: String?
-        get() = getKey("$currentAccount/$USER_SELECTED_HOMEPAGE_API")
+        get() = getKey("$currentAccount/$USER_SELECTED_HOMEPAGE_API") ?: TmdbFireProvider.PROVIDER_NAME
         set(value) {
             val key = "$currentAccount/$USER_SELECTED_HOMEPAGE_API"
             if (value == null) {

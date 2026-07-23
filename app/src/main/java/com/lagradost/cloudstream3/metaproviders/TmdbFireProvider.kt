@@ -92,15 +92,11 @@ class TmdbFireProvider : MainAPI() {
     private val apiUrl = "https://api.themoviedb.org/3"
     private val apiKey = BuildConfig.TMDB_API_KEY
 
+    // The regional `region` param is appended per request in getMainPage, not baked in here, so
+    // the rows follow the user's language (see appRegion) rather than staying pinned to one region.
     override val mainPage = mainPageOf(
-        "trending/all/day?region=US" to "Trending Today",
-        "trending/movie/week?region=US" to "Trending Movies This Week",
-        "trending/tv/week?region=US" to "Trending Shows This Week",
-        "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${today()}" to "Anime Airing Today",
-        "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${nextWeek()}" to "Anime On The Air",
-        "discover/movie?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc" to "Anime Movies",
-        "discover/tv?with_original_language=ko&sort_by=popularity.desc" to "Korean Shows",
-        "discover/movie?with_origin_country=IN&sort_by=popularity.desc&release_date.gte=${lastWeek()}&release_date.lte=${today()}" to "Trending Indian Movies",
+        "trending/movie/week" to "Trending Movies This Week",
+        "trending/tv/week" to "Trending Shows This Week",
         "discover/tv?with_networks=213" to "Netflix",
         "discover/tv?with_networks=1024" to "Amazon",
         "discover/tv?with_networks=2739" to "Disney+",
@@ -109,8 +105,13 @@ class TmdbFireProvider : MainAPI() {
         "discover/tv?with_networks=49" to "HBO",
         "discover/tv?with_networks=4330" to "Paramount+",
         "discover/tv?with_networks=3353" to "Peacock",
-        "movie/top_rated?region=US" to "Top Rated Movies",
-        "tv/top_rated?region=US" to "Top Rated Shows",
+        "movie/top_rated" to "Top Rated Movies",
+        "tv/top_rated" to "Top Rated Shows",
+        "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${today()}" to "Anime Airing Today",
+        "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${nextWeek()}" to "Anime On The Air",
+        "discover/movie?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc" to "Anime Movies",
+        "discover/tv?with_original_language=ko&sort_by=popularity.desc" to "Korean Shows",
+        "discover/movie?with_origin_country=IN&sort_by=popularity.desc&release_date.gte=${lastWeek()}&release_date.lte=${today()}" to "Trending Indian Movies",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
@@ -121,19 +122,41 @@ class TmdbFireProvider : MainAPI() {
         } else {
             "tv"
         }
+        // Feeds that carry no query of their own (trending, top_rated) open the parameters with a
+        // "?"; the discover feeds already have one, so they continue it with "&".
+        val separator = if (request.data.contains('?')) "&" else "?"
         val response = app.get(
-            "$apiUrl/${request.data}&api_key=$apiKey&language=${appLanguageTag()}" +
-                    "&without_keywords=$ADULT_KEYWORDS&page=$page",
+            "$apiUrl/${request.data}${separator}api_key=$apiKey&language=${appLanguageTag()}" +
+                    "&region=${appRegion()}&without_keywords=$ADULT_KEYWORDS" +
+                    homeReleaseFilter(request.data) + "&page=$page",
             cacheTime = CACHE_MINUTES,
             cacheUnit = TimeUnit.MINUTES
         ).parsedSafe<Results>() ?: return null
 
+        val results = response.results ?: return null
+
+        // Keep only what is watchable at home rather than cinema-only. The discover feeds already
+        // narrowed this at the request (see homeReleaseFilter), so only the trending and top_rated
+        // movie feeds, which take no release-type filter, are pruned per item here. TV has no
+        // theatrical window, so it is kept as is. Runs before the ITEMS_PER_ROW cap so a row still
+        // fills up when some of its top entries are cinema-only. See hasHomeRelease.
+        val watchable = if (type == "movie" && !request.data.startsWith("discover/movie")) {
+            coroutineScope {
+                results
+                    .map { media -> async { media.takeIf { it.hasHomeRelease() } } }
+                    .awaitAll()
+                    .filterNotNull()
+            }
+        } else {
+            results
+        }
+
         // Each card wants a title-lettered backdrop, and TMDB only exposes those through a
         // per-item images request (the list's backdrop_path is always the textless one). That is
         // one request per card, so cap the row rather than firing ~20 of them a page.
-        val results = response.results?.take(ITEMS_PER_ROW) ?: return null
         val list = coroutineScope {
-            results
+            watchable
+                .take(ITEMS_PER_ROW)
                 .map { media -> async { media.toSearchResponse(type, media.titledBackdropUrl(type)) } }
                 .awaitAll()
                 .filterNotNull()
@@ -394,9 +417,61 @@ class TmdbFireProvider : MainAPI() {
         return imageUrl(titled?.filePath, BACKDROP_IMAGE_SIZE) ?: plain
     }
 
+    /**
+     * Request-level home-release filter for the discover feeds, which — unlike trending and
+     * top_rated — accept with_release_type. with_release_type does not filter on its own; it is the
+     * release_date range, scoped by the request's region and type, that does the filtering (per
+     * TMDB staff), so a release_date.lte bound is added when the feed does not already carry one.
+     * This narrows a discover movie row to titles with a digital or physical release out (on or
+     * before today) in that region, sparing it the per-item release_dates lookups hasHomeRelease
+     * does for the feeds that take no such filter.
+     *
+     * Single-region by nature: a title released only outside the request's region is dropped here,
+     * where the per-item [hasHomeRelease] path counts a release in any region.
+     */
+    private fun homeReleaseFilter(data: String): String {
+        if (!data.startsWith("discover/movie")) return ""
+        val releasedBound = if (data.contains("release_date.lte")) "" else "&release_date.lte=${today()}"
+        return "&with_release_type=$DIGITAL_RELEASE|$PHYSICAL_RELEASE$releasedBound"
+    }
+
+    /**
+     * Whether the movie has a digital or physical release that is already out in at least one
+     * region. TMDB tags each dated release under a country with a type (theatrical, digital,
+     * physical, ...); a title that carries only theatrical types, or whose home release is still
+     * in the future, is cinema-only right now and has nothing the app could play, so it is kept
+     * off the home rows. The region does not have to be the user's — a release anywhere counts.
+     *
+     * Cached as long as the backdrops, since a title's release history barely moves.
+     */
+    private suspend fun Media.hasHomeRelease(): Boolean {
+        val id = id ?: return false
+        val countries = app.get(
+            "$apiUrl/movie/$id/release_dates?api_key=$apiKey",
+            cacheTime = BACKDROP_CACHE_HOURS,
+            cacheUnit = TimeUnit.HOURS
+        ).parsedSafe<ReleaseDates>()?.results ?: return false
+        return countries.any { country ->
+            country.releaseDates.orEmpty().any { entry ->
+                (entry.type == DIGITAL_RELEASE || entry.type == PHYSICAL_RELEASE) &&
+                        isReleased(entry.releaseDate)
+            }
+        }
+    }
+
     private fun imageUrl(path: String?, size: String = DEFAULT_IMAGE_SIZE): String? {
         if (path.isNullOrBlank()) return null
         return if (path.startsWith("/")) "$IMAGE_HOST/$size$path" else path
+    }
+
+    /** Inverse of [isUpcoming]: the date is set and has already passed. */
+    private fun isReleased(releaseDate: String?): Boolean {
+        if (releaseDate.isNullOrBlank()) return false
+        // TMDB dates its release entries as "2021-05-25T00:00:00.000Z"; the day is enough.
+        val releaseTime = runCatching {
+            SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(releaseDate.substringBefore('T'))?.time
+        }.getOrNull() ?: return false
+        return unixTimeMS >= releaseTime
     }
 
     private fun isUpcoming(releaseDate: String?): Boolean {
@@ -565,6 +640,9 @@ class TmdbFireProvider : MainAPI() {
 
     data class ReleaseDateEntry(
         @JsonProperty("certification") val certification: String? = null,
+        /** TMDB release type: 1 premiere, 2/3 theatrical, 4 digital, 5 physical, 6 TV. */
+        @JsonProperty("type") val type: Int? = null,
+        @JsonProperty("release_date") val releaseDate: String? = null,
     )
 
     companion object {
@@ -593,6 +671,10 @@ class TmdbFireProvider : MainAPI() {
 
         private const val APPEND_TO_RESPONSE =
             "credits,external_ids,videos,images,keywords,recommendations,content_ratings,release_dates"
+
+        /** TMDB release types that mean a title is watchable at home rather than only in cinemas. */
+        private const val DIGITAL_RELEASE = 4
+        private const val PHYSICAL_RELEASE = 5
 
         /** TMDB keyword ids for "anime" and "based on anime". */
         private const val ANIME_KEYWORDS = "210024|222243"
@@ -630,6 +712,53 @@ class TmdbFireProvider : MainAPI() {
          */
         private fun appLanguageCode(): String = appLanguageTag().substringBefore('-')
 
+        /**
+         * TMDB `region` for the app language, so the trending and top-rated charts reflect where
+         * the user is rather than always the US ones.
+         *
+         * The app locale is nearly always a bare language ("de", "ko") with no country, so the
+         * region is derived from the language: a country where that language is primary and that
+         * TMDB actually serves a region for (see [TMDB_REGIONS]). When the locale does carry a
+         * country subtag ("pt-BR", "es-MX") that wins, being more specific than the language
+         * default. Anything TMDB has no region for falls back to the US charts.
+         */
+        private fun appRegion(): String {
+            val tag = appLanguageTag()
+            val country = tag.substringAfter('-', "").uppercase()
+            if (country in TMDB_REGIONS) return country
+            return LANGUAGE_REGION[tag.substringBefore('-')] ?: DEFAULT_REGION
+        }
+
         private const val DEFAULT_LANGUAGE_TAG = "en-US"
+        private const val DEFAULT_REGION = "US"
+
+        /** ISO 3166-1 codes TMDB serves a `region` for; anything else it ignores. */
+        private val TMDB_REGIONS = setOf(
+            "AD", "AE", "AG", "AL", "AR", "AT", "AU", "BA", "BB", "BE", "BG", "BH", "BM", "BO",
+            "BR", "BS", "CA", "CH", "CI", "CL", "CO", "CR", "CU", "CV", "CZ", "DE", "DK", "DO",
+            "DZ", "EC", "EE", "EG", "ES", "FI", "FJ", "FR", "GB", "GF", "GH", "GI", "GP", "GQ",
+            "GR", "GT", "HK", "HN", "HR", "HU", "ID", "IE", "IL", "IN", "IQ", "IS", "IT", "JM",
+            "JO", "JP", "KE", "KR", "KW", "LB", "LC", "LI", "LT", "LV", "LY", "MA", "MC", "MD",
+            "MK", "MT", "MU", "MX", "MY", "MZ", "NE", "NG", "NL", "NO", "NZ", "OM", "PA", "PE",
+            "PF", "PH", "PK", "PL", "PS", "PT", "PY", "QA", "RO", "RS", "RU", "SA", "SC", "SE",
+            "SG", "SI", "SK", "SM", "SN", "SV", "TC", "TH", "TN", "TR", "TT", "TW", "TZ", "UG",
+            "US", "UY", "VA", "VE", "XK", "YE", "ZA", "ZM",
+        )
+
+        /**
+         * Default TMDB region for each app language (ISO 639-1 -> ISO 3166-1). Only languages whose
+         * primary country TMDB actually serves a region for are listed; the rest fall back to
+         * [DEFAULT_REGION]. A locale's own country subtag ("pt-BR") overrides this in [appRegion].
+         */
+        private val LANGUAGE_REGION = mapOf(
+            "af" to "ZA", "apc" to "LB", "ar" to "SA", "ars" to "SA", "as" to "IN", "bg" to "BG",
+            "bn" to "IN", "ckb" to "IQ", "cs" to "CZ", "de" to "DE", "el" to "GR", "es" to "ES",
+            "fil" to "PH", "fr" to "FR", "gl" to "ES", "hi" to "IN", "hr" to "HR", "hu" to "HU",
+            "in" to "ID", "it" to "IT", "iw" to "IL", "ja" to "JP", "kn" to "IN", "ko" to "KR",
+            "lt" to "LT", "lv" to "LV", "mk" to "MK", "ml" to "IN", "ms" to "MY", "mt" to "MT",
+            "ne" to "IN", "nl" to "NL", "nn" to "NO", "no" to "NO", "or" to "IN", "pl" to "PL",
+            "pt" to "PT", "ro" to "RO", "ru" to "RU", "sk" to "SK", "sv" to "SE", "ta" to "IN",
+            "tl" to "PH", "tr" to "TR", "ur" to "PK", "zh" to "TW",
+        )
     }
 }

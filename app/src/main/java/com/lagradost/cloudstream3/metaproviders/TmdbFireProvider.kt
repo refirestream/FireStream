@@ -361,8 +361,13 @@ class TmdbFireProvider : MainAPI() {
      * primary), so the lettered art has to be pulled per item from the images endpoint.
      *
      * TMDB tags each backdrop with the language of the text baked into it (a null tag being a
-     * clean, textless one), so this asks only for the app language and English and prefers the app
-     * language, then English, and falls back to the plain backdrop when a title has no lettered art.
+     * clean, textless one), so this prefers the app language, then English, then a lettered
+     * backdrop in any other language (usually the title's original), and only falls back to the
+     * plain textless backdrop when a title has no lettered art at all.
+     *
+     * The images endpoint is queried without an `include_image_language` filter so every lettered
+     * backdrop is on the table, including ones in the title's original language that a
+     * "$languageCode,en" filter would drop (e.g. a Korean show whose only titled art is tagged "ko").
      */
     private suspend fun Media.titledBackdropUrl(fallbackType: String? = null): String? {
         val plain = imageUrl(backdropPath, BACKDROP_IMAGE_SIZE)
@@ -374,7 +379,7 @@ class TmdbFireProvider : MainAPI() {
         }
         val languageCode = appLanguageCode()
         val backdrops = app.get(
-            "$apiUrl/$type/$id/images?api_key=$apiKey&include_image_language=$languageCode,en",
+            "$apiUrl/$type/$id/images?api_key=$apiKey",
             // A title's backdrop art barely changes, so cache it far longer than the catalogue
             // rows themselves to keep these per-item requests off the slow path on later visits.
             cacheTime = BACKDROP_CACHE_HOURS,
@@ -574,10 +579,10 @@ class TmdbFireProvider : MainAPI() {
 
         /**
          * TMDB offers backdrops only at fixed widths (w300, w780, w1280, original), all at the
-         * native ~16:9 aspect. w300 is plenty for the small home cards and keeps the per-item
-         * backdrop requests light; larger widths just get downscaled and cropped by the card anyway.
+         * native ~16:9 aspect. w780 keeps the lettered title art sharp on the home cards without
+         * the weight of the wider sizes.
          */
-        private const val BACKDROP_IMAGE_SIZE = "w300"
+        private const val BACKDROP_IMAGE_SIZE = "w780"
 
         private const val APPEND_TO_RESPONSE =
             "credits,external_ids,videos,images,keywords,recommendations,content_ratings,release_dates"

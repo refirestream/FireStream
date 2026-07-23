@@ -76,6 +76,9 @@ abstract class SourceApi {
     /** Name of the source as shown in the UI. */
     open val name: String = "NONE"
 
+    /** Home url of the source, when it has one, e.g. for showing where its links come from. */
+    open val url: String? = null
+
     /**
      * The language this source serves, as an IETF BCP 47 conformant tag, and "en" when it is not
      * bound to one. Check [com.lagradost.cloudstream3.utils.SubtitleHelper].

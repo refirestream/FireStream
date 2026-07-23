@@ -242,10 +242,8 @@ class PluginsViewModel : ViewModel() {
             it.plugin.tvTypes?.contains(TvType.NSFW.name) != true || isAdult
         }
 
-        // Two passes so the list is never blocked on the network: paint with
-        // whatever scores are already cached (however stale), then repaint once
-        // the refreshed ones land. On a warm cache both passes are identical and
-        // DiffUtil settles it into a no-op.
+        // Paint with cached scores first (even stale), then repaint once fresh
+        // ones land, so the list is never blocked on the network.
         val cached = if (VotingApi.ENABLED) {
             VotingApi.peekScores(visible.map { it.plugin.url })
         } else {

@@ -16,12 +16,10 @@ import kotlin.math.roundToInt
 /**
  * The flame badge shown against an extension's TrustScore (0..100, see VotingApi).
  *
- * Tiers follow Rotten Tomatoes' logic rather than its artwork: what makes that
- * badge readable is that each tier has its own *silhouette*, not merely its own
- * colour. So the flame is filled while an extension is "burning" and hollow once
- * it is burnt out, and the top tier gets a blue-fire gradient — the hottest kind
- * of flame — as its equivalent of a certified badge. Tint alone would be
- * illegible at badge size and invisible to colour-blind users.
+ * Like Rotten Tomatoes' badges, each tier gets its own *silhouette*, not just
+ * a colour — filled while "burning", hollow once burnt out, blue-fire gradient
+ * for the top tier. Tint alone would be illegible at badge size and invisible
+ * to colour-blind users.
  */
 enum class FireScore(
     @DrawableRes val iconRes: Int,
@@ -41,10 +39,8 @@ enum class FireScore(
 
     /**
      * Tint for [iconRes], or null to leave the drawable's own colours alone.
-     *
-     * Deliberately separate from [textColor]: the blue-fire flame is already a
-     * cyan -> indigo gradient and tinting would flatten it into one colour, but
-     * its score text still has to be coloured to match.
+     * Separate from [textColor] because the blue-fire flame is already a
+     * cyan -> indigo gradient, and tinting it would flatten that to one colour.
      */
     @ColorInt
     fun iconTint(context: Context): Int? =

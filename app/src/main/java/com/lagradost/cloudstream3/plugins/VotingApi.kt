@@ -35,43 +35,21 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 
 /**
- * Voting backed by the fire-backend ICP canister (see fire-backend/CLAUDE.md).
+ * Voting via the fire-backend ICP canister (see fire-backend/CLAUDE.md).
  *
- * The canister exposes two Candid endpoints, reached over the IC HTTP gateway:
- *   - `get_score : (text) -> (opt float64) query`  -> TrustScore % (0..100) or null ("New")
- *   - `vote : (text, variant { Up; Down }) -> (Result)` update
+ * Two Candid endpoints over the IC HTTP gateway:
+ *  - `get_score(text) -> opt float64`   TrustScore % (0..100), null = "New"
+ *  - `vote(text, Up|Down) -> Result`
  *
- * We call as the **anonymous** principal, so update calls need no signature and
- * no read_state/certificate handling: POST the CBOR envelope, treat 2xx as
- * accepted, then re-query the (free) `get_score`. Candid + CBOR are hand-encoded
- * below — the app has no IC agent library.
+ * Calls use the anonymous principal: no signature or certificate handling,
+ * just POST the CBOR envelope and treat 2xx as accepted. Candid + CBOR are
+ * hand-encoded below since the app has no IC agent library.
  *
- * Both up- and down-votes are cast from this client (thumb-up / thumb-down UI);
- * the canister tracks up/down and returns the combined Wilson TrustScore, which
- * `get_score` exposes as a percentage (0..100) — never a raw vote count. The UI
- * therefore shows that TrustScore %, not a number of upvotes (no count endpoint
- * exists; see fire-backend/CLAUDE.md "Non-goals").
- *
- * The anonymous principal is shared by all unauthenticated callers, so the
- * backend deliberately does *not* key a record on it: every anonymous call is an
- * independent ballot that only adds to the subject's accumulator. (It used to
- * store one record per subject, which made the entire anonymous population count
- * as a single voter — the 2nd anon vote hit the 1st one's record and either
- * no-op'd or overwrote it.)
- *
- * An anonymous ballot is consequently write-only: it cannot be de-duplicated or
- * retracted, because there is nothing to identify it by. Only an identified
- * (non-anonymous) caller gets a switchable record. This is the accepted
- * trade-off, not a gap to work around — see fire-backend/CLAUDE.md, "Two ballot
- * kinds".
- *
- * So the stored direction per subject here is **local UI state**, not a mirror
- * of backend state. It drives which thumb renders as selected and suppresses a
- * same-direction re-cast client-side (that call never reaches the canister).
- * A flip does reach the canister, and lands as an additional opposing ballot
- * rather than replacing the first: one user going up -> down leaves the subject
- * holding one up and one down (~50%). Intended — the canister is counting
- * ballots, and it has no way to know those two came from the same person.
+ * Anonymous ballots aren't deduped by the backend — each vote just adds to
+ * the subject's Wilson-score accumulator, with no per-voter record to key
+ * on. So a same-direction re-cast is only blocked client-side, and a flip
+ * sends a new opposing ballot instead of replacing the old one: one person
+ * going up then down leaves the subject at one up, one down (~50%).
  */
 object VotingApi {
     private const val LOGKEY = "VotingApi"
@@ -85,28 +63,21 @@ object VotingApi {
     private const val CANISTER_ID = "uxrrr-q7777-77774-qaaaq-cai"
 
     /**
-     * Master switch for the whole voting feature.
-     *
-     * Off while fire-backend has no permanent home: it only ever ran on a LAN
-     * dfx replica, so every install that is not on that network gets failed
-     * calls and an empty TrustScore. The implementation below is kept intact
-     * and is expected to come back — flip this to true once the canister is
-     * deployed somewhere reachable and [REPLICA_URL] is filled in.
-     *
-     * The UI reads this too, hiding the thumbs and the flame badge rather than
-     * showing controls that cannot do anything.
+     * Master switch for voting. Off because fire-backend only ever ran on a
+     * LAN dfx replica — flip to true once it's deployed somewhere reachable
+     * and [REPLICA_URL] is filled in. UI hides the thumbs and flame badge
+     * while this is false, rather than showing dead controls.
      */
     const val ENABLED = false
 
     private val CBOR = "application/cbor".toMediaType()
 
-    // REPLICA_URL is part of the check: an empty host is as unusable as a
-    // missing canister id, and both are how the feature is currently parked.
+    // Empty REPLICA_URL is just as unusable as a missing canister id.
     private val configured
         get() = ENABLED && REPLICA_URL.isNotBlank() && CANISTER_ID.isNotBlank()
 
-    // Post-vote re-read retry: covers the brief window where a get_score query
-    // can still race the just-committed update and read the pre-vote state.
+    // Retries for re-reading the score right after a vote, since get_score
+    // can briefly race the commit and return the pre-vote state.
     private const val RETRY_ATTEMPTS = 5
     private const val RETRY_DELAY_MS = 400L
 
@@ -123,14 +94,11 @@ object VotingApi {
     suspend fun SitePlugin.vote(up: Boolean): Double? = vote(url, up)
 
     // --- Score cache -------------------------------------------------------
-    // Two layers, mirroring how the rest of the app caches: an in-memory map
-    // in front of the DataStore (setKey/getKey) SharedPreferences store.
-    // Disk is what lets a cold start paint scores before any network call;
-    // memory keeps list binds off SharedPreferences and JSON parsing.
+    // In-memory map in front of the DataStore (setKey/getKey) disk cache, so
+    // a cold start can still paint scores before any network call.
     //
     // Reads are stale-while-revalidate: `peekScores` returns whatever is on
-    // disk however old, so the list renders at once, and `getScores` then
-    // refreshes anything past the TTL.
+    // disk regardless of age, and `getScores` refreshes anything past the TTL.
 
     /** Persisted cache entry. `score` null = the canister answered "New". */
     @Serializable
@@ -185,16 +153,14 @@ object VotingApi {
                 readScore(pluginUrl).onSuccess { store(pluginUrl, it) }
             }.also { started ->
                 inFlight[pluginUrl] = started
-                // The entry has to be cleared by the fetch finishing, not by a
-                // caller leaving: a caller cancelled mid-await cannot run a
-                // suspending cleanup, which would strand the finished Deferred
-                // here and serve its value forever in place of the TTL. Fires
-                // inline if the job is already done, so it cannot leak either.
+                // Clear on completion, not on the caller leaving — a caller
+                // cancelled mid-await can't run suspending cleanup, and that
+                // would strand this entry here forever.
                 started.invokeOnCompletion { inFlight.remove(pluginUrl, started) }
             }
         }
-        // Awaiting a job owned by scoreScope: this caller being cancelled must
-        // not cancel the fetch that other callers are sharing.
+        // job belongs to scoreScope, so cancelling this caller won't cancel
+        // the fetch other callers are sharing.
         return job.await()
     }
 
@@ -234,7 +200,7 @@ object VotingApi {
             }.filterNotNull().toMap()
         }
 
-    // stored value per subject: true = up, false = down, absent = not voted.
+    // per-subject vote: true = up, false = down, absent = not voted.
     fun votedDirection(pluginUrl: String): Boolean? =
         getKey<Boolean>("cs3-votes/${transformUrl(pluginUrl)}")
 
@@ -242,14 +208,12 @@ object VotingApi {
 
     private val voteLock = Mutex()
 
-    // Voting is allowed on any extension, installed or not: the subject is the
-    // plugin's URL, which exists in the repository list before download.
+    // Voting works on any plugin URL, installed or not — that URL is the subject.
     suspend fun vote(pluginUrl: String, up: Boolean): Double? {
         voteLock.withLock {
-            // Same direction already cast → no-op. This guard is the only thing
-            // making a re-cast idempotent: an anonymous ballot is write-only on
-            // the canister side, so a second identical call would be counted
-            // again rather than recognised as a repeat.
+            // Same direction already cast -> no-op. Anonymous ballots can't be
+            // deduped server-side, so this local check is what makes a
+            // re-cast idempotent.
             if (votedDirection(pluginUrl) == up) {
                 main {
                     Toast.makeText(context, R.string.already_voted, Toast.LENGTH_SHORT).show()
@@ -257,17 +221,14 @@ object VotingApi {
                 return getScore(pluginUrl)
             }
 
-            // New vote, or the user flipping their thumb. Both are sent as a
-            // plain ballot: the canister adds it to the subject's accumulator,
-            // and a flip therefore offsets the earlier ballot rather than
-            // replacing it. The stored key below tracks the UI selection only.
+            // New vote or a flip — both go as a plain ballot. A flip adds an
+            // opposing ballot rather than replacing the old one; the stored
+            // key just tracks which thumb the UI shows as selected.
             if (castVote(pluginUrl, up)) {
                 setKey("cs3-votes/${transformUrl(pluginUrl)}", up)
-                // The vote just committed, so a score now exists. A query can
-                // still momentarily race the commit and read the pre-vote state
-                // (null); re-read with a short backoff and cache only the
-                // settled value, never a stale null. Caching null here would
-                // pin "No data" until the TTL expires.
+                // A score now exists, but a query can still race the commit
+                // and read the pre-vote null. Retry with backoff and only
+                // cache once settled.
                 return readScoreSettled(pluginUrl)?.also { store(pluginUrl, it) }
             }
 
@@ -299,9 +260,8 @@ object VotingApi {
     }
 
     /**
-     * `readScore` retried against the commit-vs-query race after a vote. We only
-     * call this right after casting, when a score is guaranteed to exist, so a
-     * null means "not committed yet" — retry a few times before giving up.
+     * `readScore` retried right after a vote, when a score is guaranteed to
+     * exist — so null means "not committed yet", retry before giving up.
      */
     private suspend fun readScoreSettled(pluginUrl: String): Double? {
         repeat(RETRY_ATTEMPTS) { i ->
@@ -319,12 +279,9 @@ object VotingApi {
         }
         val subject = transformUrl(pluginUrl)
         val envelope = callEnvelope("vote", candidVoteArg(subject, up))
-        // Anonymous update call via the v3 *synchronous* endpoint: the replica
-        // holds the response until the call is executed and returns the
-        // certified reply (200), instead of the v2 endpoint's fire-and-forget
-        // 202 that returns before the vote commits. This makes the subsequent
-        // get_score re-query see the committed state. 2xx = accepted; the
-        // readScoreSettled retry covers the rare 202 fallback under load.
+        // v3's synchronous endpoint waits for the vote to commit before
+        // replying (200), unlike v2's fire-and-forget 202. That's what lets
+        // the get_score re-query right after see committed state.
         return post("v3", "call", envelope) != null
     }
 

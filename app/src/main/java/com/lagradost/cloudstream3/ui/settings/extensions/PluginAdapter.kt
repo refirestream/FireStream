@@ -179,10 +179,8 @@ class PluginAdapter(
             binding.langIcon.text = getNameNextToFlagEmoji(metadata.language) ?: metadata.language
         }
 
-        // Local plugins have no repository URL to score against. Every other row
-        // shows the flame silhouette alone (no % text); a missing score is not
-        // "New" but a neutral 50%, so the badge shows immediately rather than
-        // waiting on the first fetch.
+        // Local plugins have no repository URL to score. Other rows show just
+        // the flame silhouette, defaulting to a neutral 50% until a score loads.
         if (isLocal || !VotingApi.ENABLED) {
             binding.extVotes.isVisible = false
         } else {

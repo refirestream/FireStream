@@ -135,11 +135,10 @@ class TmdbFireProvider : MainAPI() {
 
         val results = response.results ?: return null
 
-        // Keep only what is watchable at home rather than cinema-only. The discover feeds already
-        // narrowed this at the request (see homeReleaseFilter), so only the trending and top_rated
-        // movie feeds, which take no release-type filter, are pruned per item here. TV has no
-        // theatrical window, so it is kept as is. Runs before the ITEMS_PER_ROW cap so a row still
-        // fills up when some of its top entries are cinema-only. See hasHomeRelease.
+        // Drop cinema-only movies. Discover feeds already filter this at the
+        // request (homeReleaseFilter), so only trending/top_rated movies need
+        // pruning here; TV has no theatrical window. Runs before the
+        // ITEMS_PER_ROW cap so the row still fills up. See hasHomeRelease.
         val watchable = if (type == "movie" && !request.data.startsWith("discover/movie")) {
             coroutineScope {
                 results
@@ -151,9 +150,9 @@ class TmdbFireProvider : MainAPI() {
             results
         }
 
-        // Each card wants a title-lettered backdrop, and TMDB only exposes those through a
-        // per-item images request (the list's backdrop_path is always the textless one). That is
-        // one request per card, so cap the row rather than firing ~20 of them a page.
+        // Title-lettered backdrops need a per-item images request (the list's
+        // backdrop_path is always textless), so cap the row instead of firing
+        // ~20 requests a page.
         val list = coroutineScope {
             watchable
                 .take(ITEMS_PER_ROW)
@@ -378,19 +377,14 @@ class TmdbFireProvider : MainAPI() {
     }
 
     /**
-     * A backdrop with the title lettered onto it, which reads far better on the wide home cards
-     * than the textless [Media.backdropPath] the list endpoints hand back. Those endpoints never
-     * surface a titled backdrop (their backdrop_path is always the language-neutral, textless
-     * primary), so the lettered art has to be pulled per item from the images endpoint.
+     * A backdrop with the title lettered onto it — reads better on the wide home cards than the
+     * plain [Media.backdropPath] the list endpoints return, which is always the textless primary.
+     * Lettered art only comes from a per-item images request.
      *
-     * TMDB tags each backdrop with the language of the text baked into it (a null tag being a
-     * clean, textless one), so this prefers the app language, then English, then a lettered
-     * backdrop in any other language (usually the title's original), and only falls back to the
-     * plain textless backdrop when a title has no lettered art at all.
-     *
-     * The images endpoint is queried without an `include_image_language` filter so every lettered
-     * backdrop is on the table, including ones in the title's original language that a
-     * "$languageCode,en" filter would drop (e.g. a Korean show whose only titled art is tagged "ko").
+     * Prefers the app language, then English, then any other lettered backdrop (usually the
+     * original), and falls back to the plain textless one if nothing lettered exists. No
+     * `include_image_language` filter is sent, so backdrops in the title's original language
+     * (e.g. a Korean show tagged "ko") aren't excluded.
      */
     private suspend fun Media.titledBackdropUrl(fallbackType: String? = null): String? {
         val plain = imageUrl(backdropPath, BACKDROP_IMAGE_SIZE)
@@ -418,16 +412,13 @@ class TmdbFireProvider : MainAPI() {
     }
 
     /**
-     * Request-level home-release filter for the discover feeds, which — unlike trending and
-     * top_rated — accept with_release_type. with_release_type does not filter on its own; it is the
-     * release_date range, scoped by the request's region and type, that does the filtering (per
-     * TMDB staff), so a release_date.lte bound is added when the feed does not already carry one.
-     * This narrows a discover movie row to titles with a digital or physical release out (on or
-     * before today) in that region, sparing it the per-item release_dates lookups hasHomeRelease
-     * does for the feeds that take no such filter.
+     * Home-release filter for the discover feeds (trending/top_rated don't support it). TMDB's
+     * `with_release_type` alone doesn't filter — it's the `release_date` range that does, so a
+     * `release_date.lte` bound is added if the feed doesn't have one. Narrows a discover movie row
+     * to titles already out digitally/physically in the request's region, avoiding the per-item
+     * lookups [hasHomeRelease] needs for feeds without this filter.
      *
-     * Single-region by nature: a title released only outside the request's region is dropped here,
-     * where the per-item [hasHomeRelease] path counts a release in any region.
+     * Single-region: unlike [hasHomeRelease], a release outside the request's region doesn't count.
      */
     private fun homeReleaseFilter(data: String): String {
         if (!data.startsWith("discover/movie")) return ""
@@ -436,13 +427,9 @@ class TmdbFireProvider : MainAPI() {
     }
 
     /**
-     * Whether the movie has a digital or physical release that is already out in at least one
-     * region. TMDB tags each dated release under a country with a type (theatrical, digital,
-     * physical, ...); a title that carries only theatrical types, or whose home release is still
-     * in the future, is cinema-only right now and has nothing the app could play, so it is kept
-     * off the home rows. The region does not have to be the user's — a release anywhere counts.
-     *
-     * Cached as long as the backdrops, since a title's release history barely moves.
+     * Whether the movie already has a digital or physical release out, in any region. A
+     * theatrical-only or still-upcoming title is cinema-only and has nothing to play, so it's
+     * dropped from the home rows. Cached as long as the backdrops — release history barely moves.
      */
     private suspend fun Media.hasHomeRelease(): Boolean {
         val id = id ?: return false
@@ -694,13 +681,9 @@ class TmdbFireProvider : MainAPI() {
         private fun lastWeek() = date(-7)
 
         /**
-         * App locale as an IETF tag, which is the form TMDB's `language` parameter takes
-         * ("pt-BR" gets Brazilian Portuguese where "pt" would get European).
-         *
-         * Falls back to English when there is no app to read a language off, which is the case
-         * both before the context is attached and outside the app entirely: running the provider
-         * against CloudstreamApi has no Android to load [CloudStreamApp] against, so reaching for
-         * it throws rather than returning null.
+         * App locale as an IETF tag ("pt-BR", not just "pt") — the form TMDB's `language` param
+         * expects. Falls back to English when there's no Android context to read it from (e.g.
+         * running against CloudstreamApi, where [CloudStreamApp] isn't loaded).
          */
         private fun appLanguageTag(): String =
             runCatching { CloudStreamApp.context?.let { getCurrentLocale(it) } }.getOrNull()
@@ -713,14 +696,10 @@ class TmdbFireProvider : MainAPI() {
         private fun appLanguageCode(): String = appLanguageTag().substringBefore('-')
 
         /**
-         * TMDB `region` for the app language, so the trending and top-rated charts reflect where
-         * the user is rather than always the US ones.
-         *
-         * The app locale is nearly always a bare language ("de", "ko") with no country, so the
-         * region is derived from the language: a country where that language is primary and that
-         * TMDB actually serves a region for (see [TMDB_REGIONS]). When the locale does carry a
-         * country subtag ("pt-BR", "es-MX") that wins, being more specific than the language
-         * default. Anything TMDB has no region for falls back to the US charts.
+         * TMDB `region` for the app language, so trending/top-rated reflect the user's region
+         * instead of always the US. The locale is usually a bare language ("de", "ko"), so the
+         * region is derived from [LANGUAGE_REGION]; a country subtag ("pt-BR") overrides that.
+         * Falls back to [DEFAULT_REGION] when TMDB doesn't serve the resulting region.
          */
         private fun appRegion(): String {
             val tag = appLanguageTag()

@@ -125,10 +125,8 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
             }
 
             upvote.setOnClickListener {
-                // Paint the vote immediately; the network round trip only
-                // confirms it. updateVoting reconciles from the stored direction
-                // once vote() returns, reverting the tint if it was rejected
-                // (e.g. extension not installed).
+                // Tint immediately; updateVoting reconciles once vote() returns,
+                // reverting it if the vote was rejected.
                 applyVoteTint(true)
                 ioSafe {
                     metadata.vote(up = true).main {
@@ -154,22 +152,16 @@ class PluginDetailsFragment(val data: PluginViewData) : BaseBottomSheetDialogFra
         }
     }
 
-    // value = TrustScore percentage (0..100), or null when the canister has no
-    // signal for this subject: either it was never voted on, or all of its votes
-    // have decayed to zero weight. There is no raw-count threshold to cross —
-    // one live vote is enough to be scored, because the Wilson centre already
-    // shrinks a small sample back toward the neutral 50%.
-    // This is the canister's Wilson TrustScore, not a raw upvote count — no count
-    // endpoint exists (see fire-backend/CLAUDE.md). Hence the "%" display.
+    // value = Wilson TrustScore % (0..100), null = no signal yet (never voted,
+    // or votes decayed to zero weight). Not a raw upvote count — no count
+    // endpoint exists (see fire-backend/CLAUDE.md).
     private fun updateVoting(value: Double?) {
         binding?.apply {
-            // Same flame badge as the extension list, so a tier reads the same
-            // in both places. A missing score is a neutral 50%, not "New".
+            // Same flame badge as the extension list. Missing score = neutral 50%, not "New".
             FireScore.bind(pluginVotes, value ?: FireScore.DEFAULT_SCORE, iconDp = 20)
         }
-        // Reconcile the thumbs from the locally stored direction — the only
-        // record of which way this install voted. Anonymous ballots carry no
-        // identity, so the canister cannot be asked "how did I vote?".
+        // Reconcile thumbs from the locally stored direction — anonymous
+        // ballots carry no identity, so the canister can't be asked "how did I vote?".
         applyVoteTint(data.pluginWrapper.plugin.votedDirection())
     }
 

@@ -136,7 +136,9 @@ open class HomeChildItemAdapter(
         setHeight = if (!isHorizontal) {
             maxPosterSize
         } else {
-            minPosterSize
+            // Horizontal cards show 16:9 backdrops, so match that aspect instead of the taller
+            // minPosterSize, which was cropping the sides off the image.
+            maxPosterSize * 9 / 16
         }
     }
 

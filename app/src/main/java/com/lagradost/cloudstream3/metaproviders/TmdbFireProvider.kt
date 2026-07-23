@@ -128,9 +128,20 @@ class TmdbFireProvider : MainAPI() {
             cacheUnit = TimeUnit.MINUTES
         ).parsedSafe<Results>() ?: return null
 
-        val list = response.results?.mapNotNull { it.toSearchResponse(type) } ?: return null
+        val results = response.results ?: return null
+        // Each card wants a title-lettered backdrop, and TMDB only exposes those through a
+        // per-item images request (the list's backdrop_path is always the textless one), so
+        // resolve them concurrently rather than serially down the row.
+        val list = coroutineScope {
+            results
+                .map { media -> async { media.toSearchResponse(type, media.titledBackdropUrl(type)) } }
+                .awaitAll()
+                .filterNotNull()
+        }
         return newHomePageResponse(
-            list = HomePageList(request.name, list),
+            // The rows hang a wide title backdrop on each card (see titledBackdropUrl), so lay them
+            // out as horizontal cards rather than the default portrait poster ones.
+            list = HomePageList(request.name, list, isHorizontalImages = true),
             hasNext = page < (response.totalPages ?: 1)
         )
     }
@@ -322,7 +333,14 @@ class TmdbFireProvider : MainAPI() {
         return if (id.isEmpty()) null else id to type
     }
 
-    private fun Media.toSearchResponse(fallbackType: String? = null): SearchResponse? {
+    /**
+     * @param posterOverride image to show instead of the portrait [posterPath], used by the home
+     * rows to hang a wide title backdrop on their horizontal cards (see titledBackdropUrl).
+     */
+    private fun Media.toSearchResponse(
+        fallbackType: String? = null,
+        posterOverride: String? = null,
+    ): SearchResponse? {
         val title = title ?: name ?: originalTitle ?: originalName ?: return null
         val id = id ?: return null
         val type = when (mediaType ?: fallbackType) {
@@ -331,9 +349,44 @@ class TmdbFireProvider : MainAPI() {
             else -> return null
         }
         return newMovieSearchResponse(title, "$mainUrl/$type/$id") {
-            this.posterUrl = imageUrl(posterPath)
+            this.posterUrl = posterOverride ?: imageUrl(posterPath)
             this.score = Score.from10(voteAverage)
         }
+    }
+
+    /**
+     * A backdrop with the title lettered onto it, which reads far better on the wide home cards
+     * than the textless [Media.backdropPath] the list endpoints hand back. Those endpoints never
+     * surface a titled backdrop (their backdrop_path is always the language-neutral, textless
+     * primary), so the lettered art has to be pulled per item from the images endpoint.
+     *
+     * TMDB tags each backdrop with the language of the text baked into it (a null tag being a
+     * clean, textless one), so this asks only for the app language and English and prefers the app
+     * language, then English, and falls back to the plain backdrop when a title has no lettered art.
+     */
+    private suspend fun Media.titledBackdropUrl(fallbackType: String? = null): String? {
+        val plain = imageUrl(backdropPath, BACKDROP_IMAGE_SIZE)
+        val id = id ?: return plain
+        val type = when (mediaType ?: fallbackType) {
+            "movie" -> "movie"
+            "tv" -> "tv"
+            else -> return plain
+        }
+        val languageCode = appLanguageCode()
+        val backdrops = app.get(
+            "$apiUrl/$type/$id/images?api_key=$apiKey&include_image_language=$languageCode,en",
+            // A title's backdrop art barely changes, so cache it far longer than the catalogue
+            // rows themselves to keep these per-item requests off the slow path on later visits.
+            cacheTime = BACKDROP_CACHE_HOURS,
+            cacheUnit = TimeUnit.HOURS
+        ).parsedSafe<Images>()?.backdrops
+            ?.filter { !it.filePath.isNullOrBlank() && !it.isSvg }
+            .orEmpty()
+
+        val titled = backdrops.firstOrNull { it.language == languageCode }
+            ?: backdrops.firstOrNull { it.language == "en" }
+            ?: backdrops.firstOrNull { !it.language.isNullOrBlank() }
+        return imageUrl(titled?.filePath, BACKDROP_IMAGE_SIZE) ?: plain
     }
 
     private fun imageUrl(path: String?, size: String = DEFAULT_IMAGE_SIZE): String? {
@@ -361,6 +414,7 @@ class TmdbFireProvider : MainAPI() {
         @JsonProperty("original_name") val originalName: String? = null,
         @JsonProperty("media_type") val mediaType: String? = null,
         @JsonProperty("poster_path") val posterPath: String? = null,
+        @JsonProperty("backdrop_path") val backdropPath: String? = null,
         @JsonProperty("vote_average") val voteAverage: Double? = null,
     )
 
@@ -461,6 +515,7 @@ class TmdbFireProvider : MainAPI() {
 
     data class Images(
         @JsonProperty("logos") val logos: List<Image>? = null,
+        @JsonProperty("backdrops") val backdrops: List<Image>? = null,
     )
 
     data class Image(
@@ -509,9 +564,17 @@ class TmdbFireProvider : MainAPI() {
 
     companion object {
         private const val CACHE_MINUTES = 60
+        private const val BACKDROP_CACHE_HOURS = 48
         private const val IMAGE_HOST = "https://image.tmdb.org/t/p"
         private const val DEFAULT_IMAGE_SIZE = "w500"
         private const val ORIGINAL_IMAGE_SIZE = "original"
+
+        /**
+         * TMDB offers backdrops only at fixed widths (w300, w780, w1280, original), all at the
+         * native ~16:9 aspect. w300 is plenty for the small home cards and keeps the per-item
+         * backdrop requests light; larger widths just get downscaled and cropped by the card anyway.
+         */
+        private const val BACKDROP_IMAGE_SIZE = "w300"
 
         private const val APPEND_TO_RESPONSE =
             "credits,external_ids,videos,images,keywords,recommendations,content_ratings,release_dates"

@@ -128,10 +128,10 @@ class TmdbFireProvider : MainAPI() {
             cacheUnit = TimeUnit.MINUTES
         ).parsedSafe<Results>() ?: return null
 
-        val results = response.results ?: return null
         // Each card wants a title-lettered backdrop, and TMDB only exposes those through a
-        // per-item images request (the list's backdrop_path is always the textless one), so
-        // resolve them concurrently rather than serially down the row.
+        // per-item images request (the list's backdrop_path is always the textless one). That is
+        // one request per card, so cap the row rather than firing ~20 of them a page.
+        val results = response.results?.take(ITEMS_PER_ROW) ?: return null
         val list = coroutineScope {
             results
                 .map { media -> async { media.toSearchResponse(type, media.titledBackdropUrl(type)) } }
@@ -565,6 +565,9 @@ class TmdbFireProvider : MainAPI() {
     companion object {
         private const val CACHE_MINUTES = 60
         private const val BACKDROP_CACHE_HOURS = 48
+
+        /** Cards shown per home row; each needs its own backdrop request, so keep it small. */
+        private const val ITEMS_PER_ROW = 5
         private const val IMAGE_HOST = "https://image.tmdb.org/t/p"
         private const val DEFAULT_IMAGE_SIZE = "w500"
         private const val ORIGINAL_IMAGE_SIZE = "original"

@@ -632,7 +632,7 @@ class SubtitlesFragment : BaseDialogFragment<SubtitleSettingsBinding>(
             context?.let { ctx ->
                 subtitlesFilterSubLang.isChecked =
                     PreferenceManager.getDefaultSharedPreferences(ctx)
-                        .getBoolean(getString(R.string.filter_sub_lang_key), false)
+                        .getBoolean(getString(R.string.filter_sub_lang_key), true)
             }
 
             subtitlesFilterSubLang.setOnCheckedChangeListener { _, b ->

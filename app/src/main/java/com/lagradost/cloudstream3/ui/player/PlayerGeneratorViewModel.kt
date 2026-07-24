@@ -5,6 +5,7 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.lagradost.cloudstream3.AllLanguagesName
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.mvvm.launchSafe
@@ -315,6 +316,7 @@ class PlayerGeneratorViewModel : ViewModel() {
         }
     }
 
+    /** IETF BCP 47 tags from the provider language settings, or [AllLanguagesName] */
     var langFilterList = listOf<String>()
     var filterSubByLang = false
 
@@ -323,13 +325,22 @@ class PlayerGeneratorViewModel : ViewModel() {
             return true
         }
 
+        if (langFilterList.contains(AllLanguagesName)) {
+            return true
+        }
+
         /** Only filter out subtitles fetched online */
         if (subtitle.origin != SubtitleOrigin.URL) {
             return true
         }
 
+        // A subtitle whose language cannot be resolved cannot match any filter.
+        val subtitleTag = subtitle.getIETF_tag()?.lowercase() ?: return false
+
         return langFilterList.any { lang ->
-            subtitle.originalName.contains(lang, ignoreCase = true)
+            // Provider languages are stored as primary subtags ("pt"), so regional
+            // variants ("pt-br") have to match on the primary subtag as well.
+            subtitleTag == lang || subtitleTag.substringBefore('-') == lang.substringBefore('-')
         }
     }
 

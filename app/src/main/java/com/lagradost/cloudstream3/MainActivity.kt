@@ -79,7 +79,6 @@ import com.lagradost.cloudstream3.databinding.ActivityMainBinding
 import com.lagradost.cloudstream3.databinding.ActivityMainTvBinding
 import com.lagradost.cloudstream3.databinding.BottomResultviewPreviewBinding
 import com.lagradost.cloudstream3.metaproviders.TmdbFireProvider
-import com.lagradost.cloudstream3.sources.PublicDomainMovieSource
 import com.lagradost.cloudstream3.mvvm.Resource
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.cloudstream3.mvvm.safe
@@ -824,9 +823,6 @@ class MainActivity : AppCompatActivity(), ColorPickerDialogListener, BiometricCa
                 allProviders.add(TmdbFireProvider())
             }
         }
-
-        // registerSource refuses an id it already has, which is what keeps this idempotent.
-        SourceApiHolder.registerSource(PublicDomainMovieSource())
     }
 
     private val pluginsLock = Mutex()

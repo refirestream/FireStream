@@ -1,6 +1,7 @@
 package com.lagradost.cloudstream3.ui.search
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.lagradost.cloudstream3.BuildConfig
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.mvvm.logError
 import com.lagradost.nicehttp.NiceResponse
@@ -13,7 +14,6 @@ import kotlinx.serialization.Serializable
  */
 object SearchSuggestionApi {
     private const val TMDB_API_URL = "https://api.themoviedb.org/3/search/multi"
-    private const val TMDB_API_KEY = "e6333b32409e02a4a6eba6fb7ff866bb"
     
     @Serializable
     data class TmdbSearchResult(
@@ -38,12 +38,13 @@ object SearchSuggestionApi {
      */
     suspend fun getSuggestions(query: String): List<String> {
         if (query.isBlank() || query.length < 2) return emptyList()
-        
+        if (BuildConfig.TMDB_API_KEY.isBlank()) return emptyList()
+
         return try {
             val response = app.get(
                 TMDB_API_URL,
                 params = mapOf(
-                    "api_key" to TMDB_API_KEY,
+                    "api_key" to BuildConfig.TMDB_API_KEY,
                     "query" to query,
                     "language" to "en-US"
                 ),

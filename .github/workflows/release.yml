@@ -1,15 +1,9 @@
-name: Pre-release
+name: Release
 
 on:
   push:
-    branches: [ master ]
-    paths-ignore:
-      - '*.md'
-      - '*.json'
-
-concurrency:
-  group: "pre-release"
-  cancel-in-progress: true
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -42,7 +36,7 @@ jobs:
         cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
     - name: Run Gradle
-      run: ./gradlew assembleAlphaRelease androidSourcesJar makeJar
+      run: ./gradlew assembleStableRelease androidSourcesJar makeJar
       env:
         SIGNING_KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
         SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
@@ -58,14 +52,16 @@ jobs:
       if: always()
       run: rm -f "${RUNNER_TEMP}/release.jks"
 
-    - name: Create pre-release
+    - name: Verify APK signature
+      run: |
+        APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -name apksigner | sort -V | tail -n1)"
+        "${APKSIGNER}" verify --print-certs app/build/outputs/apk/stable/release/*.apk
+
+    - name: Create release
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: pre-release
-        prerelease: true
-        make_latest: false
-        name: "Pre-release Build"
+        generate_release_notes: true
         files: |
-          app/build/outputs/apk/alpha/release/*.apk
+          app/build/outputs/apk/stable/release/*.apk
           app/build/libs/app-sources.jar
           app/build/classes.jar

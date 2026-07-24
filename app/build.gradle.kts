@@ -86,11 +86,8 @@ android {
         // We just use SIGNING_KEY_ALIAS here since it won't change
         // so won't kill the configuration cache.
         if (System.getenv("SIGNING_KEY_ALIAS") != null) {
-            create("alpha") {
-                val tmpFilePath = System.getProperty("user.home") + "/work/_temp/keystore/"
-                val alphaStoreFile: File? = File(tmpFilePath).listFiles()?.first()
-
-                storeFile = alphaStoreFile?.let { file(it) }
+            create("release") {
+                storeFile = System.getenv("SIGNING_KEYSTORE_PATH")?.let { file(it) }
                 storePassword = System.getenv("SIGNING_STORE_PASSWORD")
                 keyAlias = System.getenv("SIGNING_KEY_ALIAS")
                 keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
@@ -130,11 +127,11 @@ android {
         buildConfigField(
             "String",
             "TMDB_API_KEY",
-            // Falls back to the key the search suggestions have always shipped with, as TMDB
-            // metadata is a built in feature and must work without a local key.
+            // Supplied by the TMDB_API_KEY env var in CI, or tmdb.key in local.properties.
+            // A build without one still runs, TMDB metadata and search suggestions just stay empty.
             "\"" + (System.getenv("TMDB_API_KEY")
                 ?: localProperties["tmdb.key"]
-                ?: "e6333b32409e02a4a6eba6fb7ff866bb") + "\""
+                ?: "") + "\""
         )
         buildConfigField(
             "String",
@@ -158,7 +155,12 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (signingConfigs.names.contains("release")) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("No release signing config, falling back to the debug key")
+                signingConfigs.getByName("debug")
+            }
         }
         debug {
             isDebuggable = true
@@ -178,11 +180,6 @@ android {
         create("alpha") {
             dimension = "state"
             applicationIdSuffix = ".alpha"
-            if (signingConfigs.names.contains("alpha")) {
-                signingConfig = signingConfigs.getByName("alpha")
-            } else {
-                logger.warn("No alpha signing config!")
-            }
             versionNameSuffix = "-ALPHA"
             versionCode = (System.currentTimeMillis() / 60000).toInt()
         }

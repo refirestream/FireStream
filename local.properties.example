@@ -1,0 +1,12 @@
+# Copy to local.properties and fill in. local.properties is gitignored, never commit it.
+sdk.dir=/path/to/Android/Sdk
+
+# https://www.themoviedb.org/settings/api - v3 API key. Without it TMDB metadata,
+# the home page rows and search suggestions stay empty.
+tmdb.key=
+
+# Optional account sync integrations.
+simkl.id=
+simkl.secret=
+mal.key=
+anilist.key=

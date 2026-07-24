@@ -26,7 +26,7 @@ However, this flexibility spreads content across multiple providers. As a result
 
 But this bundling is a pain for developers to manage and test, and it leaves users with unwanted sources (e.g. wrong language), broken links, and inconsistent reliability. Developers are doing great work, but the "bundle" design itself is at fault.
 
-FireStream inverts that: you choose content from TMDB, and instead of huge bundles of semi-working links, FireStream gives you **granular control** — you, the user, install only **Sources**, and only the few you actually need and want.
+FireStream inverts that: you choose content from a single provider: TMDB, and instead of huge bundles of semi-working links, FireStream gives you **granular control** — you, the user, install only **Sources**, and only the few you actually need and want.
 
 - **A Source is a single website.** Not a bundle, not a repository of unknowns — one site = one source.
 - **Quality and speed are the goal.** The point of a source is that it works, and works fast. You curate a short list you trust rather than carrying a long list you don't.

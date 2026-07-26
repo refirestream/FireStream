@@ -508,9 +508,9 @@ object UIHelper {
     }
 
     fun Context?.isBottomLayout(): Boolean {
-        if (this == null) return true
+        if (this == null) return false
         val settingsManager = PreferenceManager.getDefaultSharedPreferences(this)
-        return settingsManager.getBoolean(getString(R.string.bottom_title_key), true)
+        return settingsManager.getBoolean(getString(R.string.bottom_title_key), false)
     }
 
     fun Activity.changeStatusBarState(hide: Boolean) {

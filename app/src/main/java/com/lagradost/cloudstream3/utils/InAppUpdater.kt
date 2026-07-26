@@ -38,10 +38,10 @@ import java.io.IOException
 import java.io.InputStreamReader
 
 object InAppUpdater {
-    private const val GITHUB_USER_NAME = "recloudstream"
-    private const val GITHUB_REPO = "cloudstream"
+    private const val GITHUB_USER_NAME = "refirestream"
+    private const val GITHUB_REPO = "FireStream"
 
-    private const val PRERELEASE_PACKAGE_NAME = "com.lagradost.cloudstream3.prerelease"
+    private const val PRERELEASE_PACKAGE_NAME = "com.re.firestream.alpha"
     private const val LOG_TAG = "InAppUpdater"
 
     @Serializable

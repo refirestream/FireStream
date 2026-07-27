@@ -1166,8 +1166,15 @@ class GeneratorPlayer : FullScreenPlayer() {
                     ArrayAdapter<Spanned>(ctx, R.layout.sort_bottom_single_choice)
                 subsArrayAdapter.add(ctx.getString(R.string.no_subtitles).html())
 
+                // Group name derived from the language tag, e.g. "fr" -> "French".
+                // Falls back to the raw name when the tag can't be resolved.
+                fun groupName(sub: SubtitleData): String {
+                    return fromTagToLanguageName(sub.getIETF_tag())?.takeIf { it.isNotBlank() }
+                        ?: sub.originalName
+                }
+
                 val subtitlesGrouped =
-                    currentSubtitles.groupBy { it.originalName }.map { (key, value) ->
+                    currentSubtitles.groupBy { groupName(it) }.map { (key, value) ->
                         key to value.sortedBy { it.nameSuffix.toIntOrNull() ?: 0 }
                     }.toMap()
                 val subtitlesGroupedList = subtitlesGrouped.entries.toList()
@@ -1175,11 +1182,11 @@ class GeneratorPlayer : FullScreenPlayer() {
                 val subtitles = subtitlesGrouped.map { it.key.html() }
 
                 val subtitleGroupIndexStart =
-                    subtitlesGrouped.keys.indexOf(currentSelectedSubtitles?.originalName) + 1
+                    subtitlesGrouped.keys.indexOf(currentSelectedSubtitles?.let { groupName(it) }) + 1
                 var subtitleGroupIndex = subtitleGroupIndexStart
 
                 val subtitleOptionIndexStart =
-                    subtitlesGrouped[currentSelectedSubtitles?.originalName]?.indexOfFirst { it.nameSuffix == currentSelectedSubtitles?.nameSuffix }
+                    subtitlesGrouped[currentSelectedSubtitles?.let { groupName(it) }]?.indexOfFirst { it.nameSuffix == currentSelectedSubtitles?.nameSuffix }
                         ?: 0
                 var subtitleOptionIndex = subtitleOptionIndexStart
 

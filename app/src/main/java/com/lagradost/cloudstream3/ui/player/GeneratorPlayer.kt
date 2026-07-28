@@ -1167,10 +1167,11 @@ class GeneratorPlayer : FullScreenPlayer() {
                 subsArrayAdapter.add(ctx.getString(R.string.no_subtitles).html())
 
                 // Group name derived from the language tag, e.g. "fr" -> "French".
-                // Falls back to the raw name when the tag can't be resolved.
+                // Falls back to an "Unknown" group when the language can't be resolved.
+                val unknownGroupName = ctx.getString(R.string.subtitles_group_unknown)
                 fun groupName(sub: SubtitleData): String {
                     return fromTagToLanguageName(sub.getIETF_tag())?.takeIf { it.isNotBlank() }
-                        ?: sub.originalName
+                        ?: unknownGroupName
                 }
 
                 val subtitlesGrouped =
@@ -1210,8 +1211,8 @@ class GeneratorPlayer : FullScreenPlayer() {
                     val subtitleOptions =
                         subtitlesGroupedList
                             .getOrNull(subtitleGroupIndex - 1)?.value?.map { subtitle ->
-                                val nameSuffix = subtitle.nameSuffix.html()
-                                nameSuffix.ifBlank {
+                                val label = subtitle.originalName.html()
+                                label.ifBlank {
                                     when (subtitle.origin) {
                                         SubtitleOrigin.URL -> txt(R.string.subtitles_from_online)
                                         SubtitleOrigin.DOWNLOADED_FILE -> txt(R.string.downloaded)

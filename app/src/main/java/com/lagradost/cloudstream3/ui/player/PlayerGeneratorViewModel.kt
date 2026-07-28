@@ -334,8 +334,10 @@ class PlayerGeneratorViewModel : ViewModel() {
             return true
         }
 
-        // A subtitle whose language cannot be resolved cannot match any filter.
-        val subtitleTag = subtitle.getIETF_tag()?.lowercase() ?: return false
+        // Keep subtitles whose language cannot be resolved: we would rather show an
+        // extra track than silently drop one we are unsure about. These land in the
+        // "Unknown" group in the selection dialog.
+        val subtitleTag = subtitle.getIETF_tag()?.lowercase() ?: return true
 
         return langFilterList.any { lang ->
             // Provider languages are stored as primary subtags ("pt"), so regional

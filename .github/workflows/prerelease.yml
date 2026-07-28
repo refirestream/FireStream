@@ -58,6 +58,16 @@ jobs:
       if: always()
       run: rm -f "${RUNNER_TEMP}/release.jks"
 
+    # softprops/action-gh-release does not move an existing tag, so the
+    # pre-release tag would stay frozen at the commit where it was first
+    # created. The in-app updater compares the installed build's commit
+    # against this tag, so a stale tag makes every newer build show a
+    # perpetual "update available". Force the tag onto the built commit.
+    - name: Move pre-release tag to built commit
+      run: |
+        git tag -f pre-release
+        git push -f origin refs/tags/pre-release
+
     - name: Create pre-release
       uses: softprops/action-gh-release@v2
       with:

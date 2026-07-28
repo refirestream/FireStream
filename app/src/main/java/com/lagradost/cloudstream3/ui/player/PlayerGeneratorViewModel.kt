@@ -329,8 +329,12 @@ class PlayerGeneratorViewModel : ViewModel() {
             return true
         }
 
-        /** Only filter out subtitles fetched online */
-        if (subtitle.origin != SubtitleOrigin.URL) {
+        // Never filter subtitles the user added themselves from a local file. Everything
+        // that is auto-discovered is filtered: provider URLs *and* the video's own embedded
+        // tracks (HLS/DASH renditions, MKV internal tracks). The latter are re-read from the
+        // media on every player reload, e.g. when the app is backgrounded and reopened, so
+        // exempting them here let unwanted languages reappear after each reload.
+        if (subtitle.origin == SubtitleOrigin.DOWNLOADED_FILE) {
             return true
         }
 

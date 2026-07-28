@@ -3,6 +3,7 @@ package com.lagradost.cloudstream3.ui.search
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.view.View
 import android.widget.ImageView
 import android.widget.ProgressBar
@@ -29,9 +30,20 @@ import com.lagradost.cloudstream3.utils.ImageLoader.loadImage
 import com.lagradost.cloudstream3.utils.SubtitleHelper
 import com.lagradost.cloudstream3.utils.UIHelper.colorFromAttribute
 import com.lagradost.cloudstream3.utils.getImageFromDrawable
+import kotlin.math.roundToInt
 
 object SearchResultBuilder {
     private val showCache: MutableMap<String, Boolean> = mutableMapOf()
+
+    /**
+     * Maps a rating in [0, 10] to a single solid color that sweeps smoothly from
+     * red (low) through orange/yellow to green (high). Uses the hue channel only
+     * so every rating gets one flat color rather than a gradient.
+     */
+    private fun ratingBarColor(rating: Float): Int {
+        val hue = (rating.coerceIn(0f, 10f) / 10f) * 120f // 0=red .. 60=yellow .. 120=green
+        return Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.80f))
+    }
 
     fun updateCache(context: Context?) {
         if (context == null) return
@@ -59,6 +71,8 @@ object SearchResultBuilder {
         val textIsSub: TextView? = itemView.findViewById(R.id.text_is_sub)
         val textFlag: TextView? = itemView.findViewById(R.id.text_flag)
         val rating: TextView? = itemView.findViewById(R.id.text_rating)
+        val ratingBar: ProgressBar? = itemView.findViewById(R.id.rating_progress)
+        val ratingShadow: View? = itemView.findViewById(R.id.rating_shadow)
 
         val textQuality: TextView? = itemView.findViewById(R.id.text_quality)
         val shadow: View? = itemView.findViewById(R.id.title_shadow)
@@ -77,6 +91,8 @@ object SearchResultBuilder {
         textIsSub?.isVisible = false
         textFlag?.isVisible = false
         rating?.isVisible = false
+        ratingBar?.isVisible = false
+        ratingShadow?.isVisible = false
         episodeText?.isVisible = false
 
         val showSub = showCache[textIsDub?.context?.getString(R.string.show_sub_key)] ?: false
@@ -86,20 +102,26 @@ object SearchResultBuilder {
         val showHd = showCache[textQuality?.context?.getString(R.string.show_hd_key)] ?: false
         val showRatingView =
             showCache[textQuality?.context?.getString(R.string.show_rating_key)] ?: false
-        if (card is SyncAPI.LibraryItem) {
-            val ratingText = card.personalRating?.toStringNull(0.1, 10, 1)
-            val showRating = !ratingText.isNullOrBlank()
-            rating?.isVisible = showRating
-            if (showRating) {
-                rating?.text = ratingText
+        // The rating is drawn as a progress bar along the bottom of the poster
+        // instead of a bubble: personal rating for library items, otherwise the
+        // public score (gated by the "Rating Label" poster option).
+        val ratingScore = when {
+            card is SyncAPI.LibraryItem -> card.personalRating
+            showRatingView -> card.score
+            else -> null
+        }
+        // toStringNull returns null below the minimum, preserving the old
+        // "hide 0.0/10" behaviour; reuse it to decide whether to draw the bar.
+        if (ratingScore?.toStringNull(0.1, 10, 1) != null) {
+            val value = ratingScore.toFloat(10).coerceIn(0f, 10f)
+            ratingBar?.apply {
+                max = 100
+                progress = (value * 10f).roundToInt()
+                progressTintList = ColorStateList.valueOf(ratingBarColor(value))
+                isVisible = true
             }
-        } else if (showRatingView) {
-            val ratingText = card.score?.toStringNull(0.1, 10, 1)
-            val showRating = !ratingText.isNullOrBlank()
-            rating?.isVisible = showRating
-            if (showRating) {
-                rating?.text = ratingText
-            }
+            // Darken the poster behind the bar so it stays legible over the image.
+            ratingShadow?.isVisible = true
         }
 
         shadow?.isVisible = showTitle

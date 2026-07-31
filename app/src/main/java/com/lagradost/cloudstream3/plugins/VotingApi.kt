@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.R
 import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.app
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import com.lagradost.cloudstream3.utils.Coroutines.main
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -23,64 +24,53 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import java.io.ByteArrayOutputStream
-import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.security.MessageDigest
-import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Voting via the fire-backend ICP canister (see fire-backend/CLAUDE.md).
  *
- * Two Candid endpoints over the IC HTTP gateway:
- *  - `get_score(text) -> opt float64`   TrustScore % (0..100), null = "New"
- *  - `vote(text, Up|Down) -> Result`
+ * The canister exposes a plain JSON/HTTP face over the IC gateway, so this is
+ * just two ordinary requests — no IC agent, no CBOR, no Candid:
  *
- * Calls use the anonymous principal: no signature or certificate handling,
- * just POST the CBOR envelope and treat 2xx as accepted. Candid + CBOR are
- * hand-encoded below since the app has no IC agent library.
+ *   GET  /score?subject=<64-hex>         -> {"score": <0..100 | null>}   null = "New"
+ *   POST /vote  {"subject":..,"dir":..}  -> {"ok": true}                 dir = up|down
  *
- * Anonymous ballots aren't deduped by the backend — each vote just adds to
- * the subject's Wilson-score accumulator, with no per-voter record to key
- * on. So a same-direction re-cast is only blocked client-side, and a flip
- * sends a new opposing ballot instead of replacing the old one: one person
- * going up then down leaves the subject at one up, one down (~50%).
+ * Reads are queries (instant, uncertified); votes are update calls that reply
+ * only after the ballot commits. Every request is anonymous.
+ *
+ * Anonymous ballots aren't deduped by the backend — each vote just adds to the
+ * subject's Wilson-score accumulator, with no per-voter record. So a
+ * same-direction re-cast is only blocked client-side, and a flip sends a new
+ * opposing ballot instead of replacing the old one: one person going up then
+ * down leaves the subject at one up, one down (~50%).
  */
 object VotingApi {
     private const val LOGKEY = "VotingApi"
 
     // --- Deployment config -------------------------------------------------
-    // fire-backend runs on a local/LAN dfx replica (see scripts/deploy-lan.sh).
-    // Fill these after `dfx deploy fire_backend`:
-    //   REPLICA_URL  = http://<lan-host-ip>:4943   (no trailing slash)
-    //   CANISTER_ID  = output of `dfx canister id fire_backend`
-    private const val REPLICA_URL = "" //http://192.168.91.130:4943
-    private const val CANISTER_ID = "uxrrr-q7777-77774-qaaaq-cai"
+    // fire-backend on the IC. The canister id is the raw-gateway subdomain, so
+    // requests need no ?canisterId= param. Reads must use the `.raw.` domain:
+    // get_score is an uncertified query and a certified domain rejects it (see
+    // fire-backend/CLAUDE.md). No trailing slash.
+    //   BASE_URL = https://<canister-id>.raw.icp0.io
+    private const val BASE_URL = "https://2gsgt-vyaaa-aaaab-qacia-cai.raw.icp0.io"
 
     /**
-     * Master switch for voting. Off because fire-backend only ever ran on a
-     * LAN dfx replica — flip to true once it's deployed somewhere reachable
-     * and [REPLICA_URL] is filled in. UI hides the thumbs and flame badge
-     * while this is false, rather than showing dead controls.
+     * Master switch for voting. UI hides the thumbs and flame badge while this
+     * is false, rather than showing dead controls.
      */
-    const val ENABLED = false
+    const val ENABLED = true
 
-    private val CBOR = "application/cbor".toMediaType()
-
-    // Empty REPLICA_URL is just as unusable as a missing canister id.
     private val configured
-        get() = ENABLED && REPLICA_URL.isNotBlank() && CANISTER_ID.isNotBlank()
+        get() = ENABLED && BASE_URL.isNotBlank()
 
-    // Retries for re-reading the score right after a vote, since get_score
-    // can briefly race the commit and return the pre-vote state.
+    // Retries for re-reading the score right after a vote, since get_score can
+    // briefly race a lagging query node and return the pre-vote state.
     private const val RETRY_ATTEMPTS = 5
     private const val RETRY_DELAY_MS = 400L
 
+    /** The subject key: SHA-256 of the URL as 64 lowercase hex chars. */
     private fun transformUrl(url: String): String =
         MessageDigest
             .getInstance("SHA-256")
@@ -93,9 +83,14 @@ object VotingApi {
     fun SitePlugin.votedDirection(): Boolean? = votedDirection(url)
     suspend fun SitePlugin.vote(up: Boolean): Double? = vote(url, up)
 
+    // --- JSON wire types ---------------------------------------------------
+
+    /** `GET /score` reply. `score` null = the canister answered "New". */
+    private data class ScoreResponse(@JsonProperty("score") val score: Double?)
+
     // --- Score cache -------------------------------------------------------
-    // In-memory map in front of the DataStore (setKey/getKey) disk cache, so
-    // a cold start can still paint scores before any network call.
+    // In-memory map in front of the DataStore (setKey/getKey) disk cache, so a
+    // cold start can still paint scores before any network call.
     //
     // Reads are stale-while-revalidate: `peekScores` returns whatever is on
     // disk regardless of age, and `getScores` refreshes anything past the TTL.
@@ -111,9 +106,9 @@ object VotingApi {
     private const val SCORE_TTL_MS = 6L * 60L * 60L * 1000L
 
     /**
-     * Cap on simultaneous `get_score` queries. A repository can list 50+
-     * plugins and firing that many sockets at once starves the connection
-     * pool and stalls icon loading in the same list.
+     * Cap on simultaneous score queries. A repository can list 50+ plugins and
+     * firing that many sockets at once starves the connection pool and stalls
+     * icon loading in the same list.
      */
     private const val SCORE_CONCURRENCY = 8
 
@@ -159,8 +154,8 @@ object VotingApi {
                 started.invokeOnCompletion { inFlight.remove(pluginUrl, started) }
             }
         }
-        // job belongs to scoreScope, so cancelling this caller won't cancel
-        // the fetch other callers are sharing.
+        // job belongs to scoreScope, so cancelling this caller won't cancel the
+        // fetch other callers are sharing.
         return job.await()
     }
 
@@ -212,8 +207,8 @@ object VotingApi {
     suspend fun vote(pluginUrl: String, up: Boolean): Double? {
         voteLock.withLock {
             // Same direction already cast -> no-op. Anonymous ballots can't be
-            // deduped server-side, so this local check is what makes a
-            // re-cast idempotent.
+            // deduped server-side, so this local check is what makes a re-cast
+            // idempotent.
             if (votedDirection(pluginUrl) == up) {
                 main {
                     Toast.makeText(context, R.string.already_voted, Toast.LENGTH_SHORT).show()
@@ -222,13 +217,13 @@ object VotingApi {
             }
 
             // New vote or a flip — both go as a plain ballot. A flip adds an
-            // opposing ballot rather than replacing the old one; the stored
-            // key just tracks which thumb the UI shows as selected.
+            // opposing ballot rather than replacing the old one; the stored key
+            // just tracks which thumb the UI shows as selected.
             if (castVote(pluginUrl, up)) {
                 setKey("cs3-votes/${transformUrl(pluginUrl)}", up)
-                // A score now exists, but a query can still race the commit
-                // and read the pre-vote null. Retry with backoff and only
-                // cache once settled.
+                // The vote committed before /vote replied, but a query can still
+                // hit a lagging node and read the pre-vote state. Retry with
+                // backoff and only cache once settled.
                 return readScoreSettled(pluginUrl)?.also { store(pluginUrl, it) }
             }
 
@@ -239,7 +234,7 @@ object VotingApi {
     // --- Canister calls ----------------------------------------------------
 
     /**
-     * Query `get_score(subject)` -> TrustScore % (0..100) or null ("New").
+     * `GET /score?subject=<hex>` -> TrustScore % (0..100) or null ("New").
      *
      * Success means the canister answered; the value inside may still be null
      * ("New"). Failure means the call did not complete, which callers must not
@@ -247,21 +242,28 @@ object VotingApi {
      */
     private suspend fun readScore(pluginUrl: String): Result<Double?> {
         if (!configured) {
-            Log.w(LOGKEY, "voting disabled or unconfigured; skipping get_score")
+            Log.w(LOGKEY, "voting disabled or unconfigured; skipping score read")
             return Result.failure(IllegalStateException("voting disabled or unconfigured"))
         }
         val subject = transformUrl(pluginUrl)
-        val envelope = queryEnvelope("get_score", candidTextArg(subject))
-        val reply = post("v2", "query", envelope)
-            ?: return Result.failure(IOException("get_score call failed"))
-        val arg = replyArg(reply)
-            ?: return Result.failure(IOException("get_score returned no reply arg"))
-        return Result.success(decodeOptFloat64(arg))
+        return try {
+            val url = "$BASE_URL/score?subject=$subject"
+            val res = app.get(url)
+            if (!res.isSuccessful) {
+                Log.e(LOGKEY, "score read failed: HTTP ${res.code}")
+                return Result.failure(Exception("score read failed: HTTP ${res.code}"))
+            }
+            Result.success(parseJson<ScoreResponse>(res.text).score)
+        } catch (t: Throwable) {
+            Log.e(LOGKEY, "score read error: ${Log.getStackTraceString(t)}")
+            Result.failure(t)
+        }
     }
 
     /**
      * `readScore` retried right after a vote, when a score is guaranteed to
-     * exist — so null means "not committed yet", retry before giving up.
+     * exist — so null means "not committed yet on this node", retry before
+     * giving up.
      */
     private suspend fun readScoreSettled(pluginUrl: String): Double? {
         repeat(RETRY_ATTEMPTS) { i ->
@@ -271,343 +273,25 @@ object VotingApi {
         return null
     }
 
-    /** Update `vote(subject, dir)`. Returns true if the replica accepted it. */
+    /** `POST /vote {subject, dir}`. Returns true if the canister accepted it. */
     private suspend fun castVote(pluginUrl: String, up: Boolean): Boolean {
         if (!configured) {
             Log.w(LOGKEY, "voting disabled or unconfigured; cannot vote")
             return false
         }
         val subject = transformUrl(pluginUrl)
-        val envelope = callEnvelope("vote", candidVoteArg(subject, up))
-        // v3's synchronous endpoint waits for the vote to commit before
-        // replying (200), unlike v2's fire-and-forget 202. That's what lets
-        // the get_score re-query right after see committed state.
-        return post("v3", "call", envelope) != null
-    }
-
-    private suspend fun post(apiVersion: String, endpoint: String, body: ByteArray): ByteArray? =
-        withContext(Dispatchers.IO) {
-            val url = "$REPLICA_URL/api/$apiVersion/canister/$CANISTER_ID/$endpoint"
-            Log.d(LOGKEY, "POST $url (${body.size} B cbor)")
-            try {
-                val req = Request.Builder().url(url).post(body.toRequestBody(CBOR)).build()
-                app.baseClient.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) {
-                        Log.e(LOGKEY, "canister call failed: HTTP ${resp.code}")
-                        return@withContext null
-                    }
-                    resp.body?.bytes() ?: ByteArray(0)
-                }
-            } catch (t: Throwable) {
-                Log.e(LOGKEY, "canister call error: ${Log.getStackTraceString(t)}")
-                null
-            }
-        }
-
-    // --- IC request envelopes (CBOR) --------------------------------------
-
-    private const val ANONYMOUS = 0x04.toByte()
-    private val secureRandom = SecureRandom()
-
-    /** ns since epoch + ~4 min, under the IC's 5-minute ingress-expiry cap. */
-    private fun ingressExpiry(): Long =
-        System.currentTimeMillis() * 1_000_000L + 4L * 60L * 1_000_000_000L
-
-    private fun queryEnvelope(method: String, arg: ByteArray): ByteArray =
-        Cbor().apply {
-            beginMap(1)
-            text("content")
-            beginMap(6)
-            text("request_type"); text("query")
-            text("sender"); bytes(byteArrayOf(ANONYMOUS))
-            text("canister_id"); bytes(principalRaw(CANISTER_ID))
-            text("method_name"); text(method)
-            text("arg"); bytes(arg)
-            text("ingress_expiry"); uint(ingressExpiry())
-        }.toByteArray()
-
-    private fun callEnvelope(method: String, arg: ByteArray): ByteArray {
-        val nonce = ByteArray(16).also { secureRandom.nextBytes(it) }
-        return Cbor().apply {
-            beginMap(1)
-            text("content")
-            beginMap(7)
-            text("request_type"); text("call")
-            text("sender"); bytes(byteArrayOf(ANONYMOUS))
-            text("canister_id"); bytes(principalRaw(CANISTER_ID))
-            text("method_name"); text(method)
-            text("arg"); bytes(arg)
-            text("ingress_expiry"); uint(ingressExpiry())
-            text("nonce"); bytes(nonce)
-        }.toByteArray()
-    }
-
-    /** Extract `reply.arg` from a `{status:"replied", reply:{arg:...}}` envelope. */
-    @Suppress("UNCHECKED_CAST")
-    private fun replyArg(cbor: ByteArray): ByteArray? {
-        val root = CborReader(cbor).read() as? Map<String, Any?> ?: return null
-        if (root["status"] != "replied") {
-            Log.w(LOGKEY, "canister status=${root["status"]} msg=${root["reject_message"]}")
-            return null
-        }
-        val reply = root["reply"] as? Map<String, Any?> ?: return null
-        return reply["arg"] as? ByteArray
-    }
-
-    // --- Candid argument encoding -----------------------------------------
-
-    /** Encode `(text)`. */
-    private fun candidTextArg(s: String): ByteArray = ByteArrayOutputStream().apply {
-        write("DIDL".toByteArray(Charsets.US_ASCII))
-        writeByte(0x00)          // 0 type-table entries
-        writeByte(0x01)          // 1 argument
-        writeByte(0x71)          // text
-        val utf8 = s.toByteArray()
-        writeLeb128(utf8.size.toLong())
-        write(utf8)
-    }.toByteArray()
-
-    /** Encode `(text, variant { Up; Down })`. */
-    private fun candidVoteArg(s: String, up: Boolean): ByteArray {
-        // Field ids are the Candid label hashes; fields go in ascending-hash order.
-        val hUp = candidHash("Up")
-        val hDown = candidHash("Down")
-        // Sorted order and the selected variant's index within it.
-        val ascending = listOf(hUp to "Up", hDown to "Down").sortedBy { it.first }
-        val selectedHash = if (up) hUp else hDown
-        val selectedIdx = ascending.indexOfFirst { it.first == selectedHash }.toLong()
-
-        return ByteArrayOutputStream().apply {
-            write("DIDL".toByteArray(Charsets.US_ASCII))
-            // --- type table: 1 entry (the variant) ---
-            writeByte(0x01)
-            writeByte(0x6b)                      // variant (sleb128 -21)
-            writeLeb128(2)                       // 2 fields
-            for ((hash, _) in ascending) {
-                writeLeb128(hash)                // field id (hash)
-                writeByte(0x7f)                  // field type: null (no payload)
-            }
-            // --- argument types ---
-            writeByte(0x02)                      // 2 arguments
-            writeByte(0x71)                      // arg0: text
-            writeByte(0x00)                      // arg1: type table index 0 (the variant)
-            // --- values ---
-            val utf8 = s.toByteArray()
-            writeLeb128(utf8.size.toLong())      // text length
-            write(utf8)                          // text bytes
-            writeLeb128(selectedIdx)             // chosen variant index
-        }.toByteArray()
-    }
-
-    /** Candid label hash: fold h = h*223 + byte (mod 2^32). */
-    private fun candidHash(name: String): Long =
-        name.toByteArray(Charsets.US_ASCII).fold(0L) { h, b ->
-            (h * 223L + (b.toInt() and 0xff)) and 0xffff_ffffL
-        }
-
-    // --- Candid reply decoding: `opt float64` -----------------------------
-
-    private fun decodeOptFloat64(arg: ByteArray): Double? {
-        val c = CandidCursor(arg)
-        // magic
-        repeat(4) { c.byte() } // "DIDL"
-        // type table — parse structurally to advance the cursor
-        val entries = c.leb128()
-        repeat(entries.toInt()) { c.skipTypeDef() }
-        // argument types
-        val args = c.leb128()
-        repeat(args.toInt()) { c.sleb128() }
-        // value: opt flag, then f64 little-endian if present
-        return if (c.byte().toInt() == 0) null else c.f64()
-    }
-
-    // --- Principal (textual) -> raw bytes ---------------------------------
-
-    /** Decode a textual principal to its raw bytes (strips the 4-byte CRC32). */
-    private fun principalRaw(text: String): ByteArray {
-        val decoded = base32Decode(text.replace("-", ""))
-        return decoded.copyOfRange(4, decoded.size)
-    }
-
-    private fun base32Decode(s: String): ByteArray {
-        val out = ByteArrayOutputStream()
-        var buffer = 0
-        var bits = 0
-        for (ch in s.lowercase()) {
-            val v = when (ch) {
-                in 'a'..'z' -> ch - 'a'
-                in '2'..'7' -> ch - '2' + 26
-                else -> continue
-            }
-            buffer = (buffer shl 5) or v
-            bits += 5
-            if (bits >= 8) {
-                bits -= 8
-                out.write((buffer ushr bits) and 0xff)
-            }
-        }
-        return out.toByteArray()
-    }
-}
-
-private fun ByteArrayOutputStream.writeByte(b: Int) = write(b and 0xff)
-
-/** Unsigned LEB128 (Candid lengths, field ids, indices). */
-private fun ByteArrayOutputStream.writeLeb128(value: Long) {
-    var v = value
-    do {
-        var b = (v and 0x7f).toInt()
-        v = v ushr 7
-        if (v != 0L) b = b or 0x80
-        write(b)
-    } while (v != 0L)
-}
-
-// ---------------------------------------------------------------------------
-// Minimal CBOR writer (unsigned/text/bytes/map/array only — all the IC needs).
-// ---------------------------------------------------------------------------
-
-private class Cbor {
-    private val out = ByteArrayOutputStream()
-
-    fun beginMap(n: Int) = head(5, n.toLong())
-    fun beginArray(n: Int) = head(4, n.toLong())
-    fun uint(v: Long) = head(0, v)
-    fun text(s: String) {
-        val b = s.toByteArray()
-        head(3, b.size.toLong()); out.write(b)
-    }
-    fun bytes(b: ByteArray) {
-        head(2, b.size.toLong()); out.write(b)
-    }
-
-    private fun head(major: Int, value: Long) {
-        val m = major shl 5
-        when {
-            value < 24 -> out.write(m or value.toInt())
-            value < 0x100 -> { out.write(m or 24); out.write(value.toInt()) }
-            value < 0x10000 -> { out.write(m or 25); writeBE(value, 2) }
-            value < 0x1_0000_0000L -> { out.write(m or 26); writeBE(value, 4) }
-            else -> { out.write(m or 27); writeBE(value, 8) }
-        }
-    }
-
-    private fun writeBE(value: Long, n: Int) {
-        for (i in n - 1 downTo 0) out.write(((value ushr (8 * i)) and 0xff).toInt())
-    }
-
-    fun toByteArray(): ByteArray = out.toByteArray()
-}
-
-// ---------------------------------------------------------------------------
-// Minimal CBOR reader -> Map / List / ByteArray / String / Long.
-// ---------------------------------------------------------------------------
-
-/** Sentinel for the CBOR "break" stop code (0xff) ending an indefinite-length item. */
-private object Break
-
-private class CborReader(private val buf: ByteArray) {
-    private var pos = 0
-
-    fun read(): Any? {
-        val b = next().toInt() and 0xff
-        val major = b ushr 5
-        val info = b and 0x1f
-        return when (major) {
-            0 -> length(info)                       // unsigned int
-            2 -> readBytes(length(info).toInt())    // byte string
-            3 -> String(readBytes(length(info).toInt()), Charsets.UTF_8) // text
-            4 -> if (info == 31)                     // array, indefinite length
-                buildList { while (true) { val v = read(); if (v === Break) break; add(v) } }
-            else List(length(info).toInt()) { read() }                   // array, definite
-            5 -> LinkedHashMap<String, Any?>().apply {                   // map
-                if (info == 31) {                    // indefinite length: read pairs until break.
-                    while (true) {
-                        val k = read(); if (k === Break) break
-                        put(k.toString(), read())
-                    }
-                } else repeat(length(info).toInt()) { put(read().toString(), read()) }
-            }
-            6 -> { length(info); read() }           // tag: consume tag arg (e.g. IC self-describe 55799 = d9 d9 f7), then payload
-            7 -> when (info) {                       // simple/float
-                31 -> Break                          // break stop code for indefinite items
-                22, 23 -> null                       // null / undefined
-                else -> length(info)
-            }
-            else -> null
-        }
-    }
-
-    private fun length(info: Int): Long = when (info) {
-        in 0..23 -> info.toLong()
-        24 -> readBE(1)
-        25 -> readBE(2)
-        26 -> readBE(4)
-        27 -> readBE(8)
-        else -> 0
-    }
-
-    private fun readBE(n: Int): Long {
-        var v = 0L
-        repeat(n) { v = (v shl 8) or (next().toLong() and 0xff) }
-        return v
-    }
-
-    private fun readBytes(n: Int): ByteArray =
-        buf.copyOfRange(pos, pos + n).also { pos += n }
-
-    private fun next(): Byte = buf[pos++]
-}
-
-// ---------------------------------------------------------------------------
-// Candid cursor: leb128 / sleb128 / f64 reads + structural type-table skip.
-// ---------------------------------------------------------------------------
-
-private class CandidCursor(private val buf: ByteArray) {
-    private var pos = 0
-
-    fun byte(): Byte = buf[pos++]
-
-    fun leb128(): Long {
-        var result = 0L
-        var shift = 0
-        while (true) {
-            val b = buf[pos++].toInt() and 0xff
-            result = result or ((b.toLong() and 0x7f) shl shift)
-            if (b and 0x80 == 0) break
-            shift += 7
-        }
-        return result
-    }
-
-    fun sleb128(): Long {
-        var result = 0L
-        var shift = 0
-        var b: Int
-        do {
-            b = buf[pos++].toInt() and 0xff
-            result = result or ((b.toLong() and 0x7f) shl shift)
-            shift += 7
-        } while (b and 0x80 != 0)
-        if (shift < 64 && (b and 0x40) != 0) result = result or (-1L shl shift)
-        return result
-    }
-
-    fun f64(): Double {
-        val d = ByteBuffer.wrap(buf, pos, 8).order(ByteOrder.LITTLE_ENDIAN).double
-        pos += 8
-        return d
-    }
-
-    /** Advance past one type-table definition (opcode + its structure). */
-    fun skipTypeDef() {
-        when (sleb128()) {
-            -18L, -19L -> sleb128()                 // opt / vec: one inner type ref
-            -20L, -21L -> {                          // record / variant
-                val fields = leb128()
-                repeat(fields.toInt()) { leb128(); sleb128() } // id + type ref
-            }
-            // primitives (and anything else we don't expect): opcode only
+        return try {
+            val url = "$BASE_URL/vote"
+            val res = app.post(
+                url,
+                headers = mapOf("Content-Type" to "application/json"),
+                json = mapOf("subject" to subject, "dir" to if (up) "up" else "down"),
+            )
+            if (!res.isSuccessful) Log.e(LOGKEY, "vote failed: HTTP ${res.code}")
+            res.isSuccessful
+        } catch (t: Throwable) {
+            Log.e(LOGKEY, "vote error: ${Log.getStackTraceString(t)}")
+            false
         }
     }
 }

@@ -424,11 +424,22 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
                             .inflate(R.layout.sort_bottom_single_provider_choice, parent, false)
                         val titleText = view.findViewById<TextView>(R.id.text1)
                         val pinIcon = view.findViewById<ImageView>(R.id.pinicon)
+                        val settingsIcon = view.findViewById<ImageView>(R.id.settingsicon)
                         val name = getItem(position)
                         titleText?.text = name
-                        val isPinned =
-                            pinnedphashset.contains(currentValidApis[position].name)
+                        val api = currentValidApis[position]
+                        val isPinned = pinnedphashset.contains(api.name)
                         pinIcon.visibility = if (isPinned) View.VISIBLE else View.GONE
+                        // Built-in providers that carry their own settings (e.g. TheMovieDB's home
+                        // categories) get a gear here — the extensions settings button only reaches
+                        // plugins, and these aren't plugins.
+                        if (api is ConfigurableProvider) {
+                            settingsIcon.visibility = View.VISIBLE
+                            settingsIcon.setOnClickListener { api.openSettings(it.context) }
+                        } else {
+                            settingsIcon.visibility = View.GONE
+                            settingsIcon.setOnClickListener(null)
+                        }
                         return view
                     }
                 }

@@ -1,5 +1,6 @@
 package com.lagradost.cloudstream3.metaproviders
 
+import android.content.Context
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.cloudstream3.APIHolder.unixTimeMS
 import com.lagradost.cloudstream3.Actor
@@ -15,6 +16,8 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addImdbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTMDbId
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.MainAPI
+import com.lagradost.cloudstream3.MainActivity
+import com.lagradost.cloudstream3.MainPageData
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.ProviderType
 import com.lagradost.cloudstream3.Score
@@ -29,13 +32,13 @@ import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.addDate
 import com.lagradost.cloudstream3.addEpisodes
 import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newAnimeLoadResponse
 import com.lagradost.cloudstream3.newEpisode
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
 import com.lagradost.cloudstream3.newSearchResponseList
+import com.lagradost.cloudstream3.ui.home.ConfigurableProvider
 import com.lagradost.cloudstream3.ui.settings.getCurrentLocale
 import com.lagradost.cloudstream3.utils.AppUtils.toJson
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
@@ -51,7 +54,7 @@ import java.util.concurrent.TimeUnit
 /**
  * Based on CineTmdbProvider from the CineStream extension (https://github.com/SaurabhKaperwan/CSX).
  */
-class TmdbFireProvider : MainAPI() {
+class TmdbFireProvider : MainAPI(), ConfigurableProvider {
     override var name = PROVIDER_NAME
     override var mainUrl = "https://www.themoviedb.org"
 
@@ -92,27 +95,62 @@ class TmdbFireProvider : MainAPI() {
     private val apiUrl = "https://api.themoviedb.org/3"
     private val apiKey = BuildConfig.TMDB_API_KEY
 
-    // The regional `region` param is appended per request in getMainPage, not baked in here, so
-    // the rows follow the user's language (see appRegion) rather than staying pinned to one region.
-    override val mainPage = mainPageOf(
-        "trending/movie/week" to "Trending Movies This Week",
-        "trending/tv/week" to "Trending Shows This Week",
-        "discover/tv?with_networks=213" to "Netflix",
-        "discover/tv?with_networks=1024" to "Amazon",
-        "discover/tv?with_networks=2739" to "Disney+",
-        "discover/tv?with_networks=453" to "Hulu",
-        "discover/tv?with_networks=2552" to "Apple TV+",
-        "discover/tv?with_networks=49" to "HBO",
-        "discover/tv?with_networks=4330" to "Paramount+",
-        "discover/tv?with_networks=3353" to "Peacock",
-        "movie/top_rated" to "Top Rated Movies",
-        "tv/top_rated" to "Top Rated Shows",
-        "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${today()}" to "Anime Airing Today",
-        "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${nextWeek()}" to "Anime On The Air",
-        "discover/movie?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc" to "Anime Movies",
-        "discover/tv?with_original_language=ko&sort_by=popularity.desc" to "Korean Shows",
-        "discover/movie?with_origin_country=IN&sort_by=popularity.desc&release_date.gte=${lastWeek()}&release_date.lte=${today()}" to "Trending Indian Movies",
+    /**
+     * A home row. [id] is the stable key the settings store keys enable/order by, so it must never
+     * change once shipped (see [TmdbFireHomeSettings]); [title] and [data] are free to change.
+     * [data] is a lambda because the anime rows bake in today's date, which has to be evaluated
+     * when the row is built rather than once at construction.
+     *
+     * The regional `region` param is appended per request in getMainPage, not baked in here, so the
+     * rows follow the user's language (see appRegion) rather than staying pinned to one region.
+     */
+    private data class HomeCategory(val id: String, val title: String, val data: () -> String)
+
+    private val homeCategories: List<HomeCategory> = listOf(
+        HomeCategory("trending-movies", "Trending Movies This Week") { "trending/movie/week" },
+        HomeCategory("trending-shows", "Trending Shows This Week") { "trending/tv/week" },
+        HomeCategory("netflix", "Netflix") { "discover/tv?with_networks=213" },
+        HomeCategory("amazon", "Amazon") { "discover/tv?with_networks=1024" },
+        HomeCategory("disney-plus", "Disney+") { "discover/tv?with_networks=2739" },
+        HomeCategory("hulu", "Hulu") { "discover/tv?with_networks=453" },
+        HomeCategory("apple-tv-plus", "Apple TV+") { "discover/tv?with_networks=2552" },
+        HomeCategory("hbo", "HBO") { "discover/tv?with_networks=49" },
+        HomeCategory("paramount-plus", "Paramount+") { "discover/tv?with_networks=4330" },
+        HomeCategory("peacock", "Peacock") { "discover/tv?with_networks=3353" },
+        HomeCategory("top-rated-movies", "Top Rated Movies") { "movie/top_rated" },
+        HomeCategory("top-rated-shows", "Top Rated Shows") { "tv/top_rated" },
+        HomeCategory("anime-airing-today", "Anime Airing Today") {
+            "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${today()}"
+        },
+        HomeCategory("anime-on-the-air", "Anime On The Air") {
+            "discover/tv?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc&air_date.gte=${today()}&air_date.lte=${nextWeek()}"
+        },
+        HomeCategory("anime-movies", "Anime Movies") {
+            "discover/movie?with_keywords=$ANIME_KEYWORDS&sort_by=popularity.desc"
+        },
+        HomeCategory("korean-shows", "Korean Shows") {
+            "discover/tv?with_original_language=ko&sort_by=popularity.desc"
+        },
+        HomeCategory("trending-indian-movies", "Trending Indian Movies") {
+            "discover/movie?with_origin_country=IN&sort_by=popularity.desc&release_date.gte=${lastWeek()}&release_date.lte=${today()}"
+        },
     )
+
+    // Read on every access, not built once: the user's enable/order choices can change while the
+    // provider instance lives on, and the anime rows' dates need to be current.
+    override val mainPage: List<MainPageData>
+        get() {
+            val byId = homeCategories.associateBy { it.id }
+            return TmdbFireHomeSettings.orderedEnabledIds(homeCategories.map { it.id })
+                .mapNotNull { id -> byId[id]?.let { MainPageData(it.title, it.data()) } }
+        }
+
+    override fun openSettings(context: Context) {
+        val entries = homeCategories.map { TmdbFireHomeSettings.Entry(it.id, it.title) }
+        TmdbFireHomeSettings.show(context, entries) {
+            MainActivity.reloadHomeEvent(true)
+        }
+    }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         // Every row is either a movie or a tv feed, apart from the mixed trending one, which

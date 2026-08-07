@@ -13,9 +13,11 @@ import android.os.Build
 import android.os.Bundle
 import android.text.Spanned
 import android.util.Log
+import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.AbsListView
 import android.widget.ArrayAdapter
 import android.widget.ImageView
@@ -63,6 +65,7 @@ import com.lagradost.cloudstream3.amap
 import com.lagradost.cloudstream3.databinding.DialogOnlineSubtitlesBinding
 import com.lagradost.cloudstream3.databinding.FragmentPlayerBinding
 import com.lagradost.cloudstream3.databinding.PlayerSelectSourceAndSubsBinding
+import com.lagradost.cloudstream3.databinding.PlayerSelectSubtitlesBinding
 import com.lagradost.cloudstream3.databinding.PlayerSelectTracksBinding
 import com.lagradost.cloudstream3.isAnimeOp
 import com.lagradost.cloudstream3.isEpisodeBased
@@ -1409,6 +1412,134 @@ class GeneratorPlayer : FullScreenPlayer() {
                     }
                     sourceDialog.dismissSafe(activity)
                     selectSourceDialog = null
+                }
+            }
+        } catch (e: Exception) {
+            logError(e)
+        }
+    }
+
+    /**
+     * Compact, bottom-anchored subtitle picker used on TV (Apple TV+ style).
+     * Unlike [showMirrorsDialogue] it does NOT pause playback and keeps the video
+     * visible behind it; selecting an entry applies immediately and dismisses.
+     */
+    override fun showSubtitlesDialogue() {
+        try {
+            currentSelectedSubtitles = player.getCurrentPreferredSubtitle()
+            context?.let { ctx ->
+                val currentSubtitles = sortSubs(viewModel.state.subtitles)
+
+                val subtitleDialog = Dialog(ctx, R.style.PlayerSubtitleSelectDialog)
+                val binding =
+                    PlayerSelectSubtitlesBinding.inflate(LayoutInflater.from(ctx), null, false)
+                subtitleDialog.setContentView(binding.root)
+
+                // Anchor to the bottom-end so it reads as a small submenu over the video.
+                val window = subtitleDialog.window
+                window?.apply {
+                    setGravity(Gravity.BOTTOM or Gravity.END)
+                    setLayout(
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT
+                    )
+                    // Show without the activity losing its immersive (fullscreen) state,
+                    // which would otherwise flash the system bars back in.
+                    setFlags(
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    )
+                }
+
+                selectSubtitleTrackDialog = subtitleDialog
+                subtitleDialog.show()
+
+                // Copy the immersive flags onto the dialog, then let it take DPAD focus.
+                window?.apply {
+                    activity?.window?.decorView?.systemUiVisibility?.let {
+                        decorView.systemUiVisibility = it
+                    }
+                    clearFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+                }
+
+                val subtitleList = binding.sortSubtitles
+
+                // Flatten the language grouping into a single "Off" + one-row-per-track list.
+                val unknownGroupName = ctx.getString(R.string.subtitles_group_unknown)
+                fun groupName(sub: SubtitleData): String {
+                    return fromTagToLanguageName(sub.getIETF_tag())?.takeIf { it.isNotBlank() }
+                        ?: unknownGroupName
+                }
+
+                val subtitlesGrouped = currentSubtitles.groupBy { groupName(it) }
+
+                // null data == "No Subtitles" (Off)
+                val entrySubtitles = ArrayList<SubtitleData?>()
+                val entryLabels = ArrayList<Spanned>()
+
+                entrySubtitles.add(null)
+                entryLabels.add(ctx.getString(R.string.no_subtitles).html())
+
+                subtitlesGrouped.forEach { (group, subs) ->
+                    val sorted = subs.sortedBy { it.nameSuffix.toIntOrNull() ?: 0 }
+                    sorted.forEachIndexed { index, sub ->
+                        // Disambiguate only when a language has more than one track.
+                        val label = if (sorted.size <= 1) {
+                            group
+                        } else {
+                            val extra = sub.originalName.ifBlank {
+                                sub.nameSuffix.ifBlank { (index + 1).toString() }
+                            }
+                            "$group — $extra"
+                        }
+                        entrySubtitles.add(sub)
+                        entryLabels.add(label.html())
+                    }
+                }
+
+                val selectedIndex =
+                    entrySubtitles.indexOfFirst { it == currentSelectedSubtitles }
+                        .takeIf { it >= 0 } ?: 0
+
+                val subsArrayAdapter =
+                    ArrayAdapter<Spanned>(ctx, R.layout.sort_bottom_single_choice)
+                subsArrayAdapter.addAll(entryLabels)
+
+                subtitleList.adapter = subsArrayAdapter
+                subtitleList.choiceMode = AbsListView.CHOICE_MODE_SINGLE
+                subtitleList.setItemChecked(selectedIndex, true)
+                subtitleList.setSelection(selectedIndex)
+
+                fun dismiss() {
+                    subtitleDialog.dismissSafe(activity)
+                    selectSubtitleTrackDialog = null
+                    activity?.hideSystemUI()
+                }
+
+                subtitleList.setOnItemClickListener { _, _, which, _ ->
+                    val subtitle = entrySubtitles.getOrNull(which)
+                    val requiresReload = if (subtitle == null) {
+                        noSubtitles()
+                    } else {
+                        setSubtitles(subtitle, true)
+                    }
+                    subtitleList.setItemChecked(which, true)
+                    // Some subtitles (e.g. online ones not yet loaded) need the current
+                    // source reloaded before they become active.
+                    if (requiresReload) {
+                        currentSelectedLink?.let { loadLink(it, true) }
+                    }
+                    dismiss()
+                }
+
+                subtitleDialog.setOnDismissListener {
+                    selectSubtitleTrackDialog = null
+                }
+
+                // Land the DPAD focus on the currently selected row.
+                subtitleList.post {
+                    subtitleList.requestFocus()
+                    subtitleList.setSelection(selectedIndex)
                 }
             }
         } catch (e: Exception) {

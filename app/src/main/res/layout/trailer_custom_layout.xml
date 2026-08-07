@@ -890,6 +890,16 @@
                             app:icon="@drawable/ic_outline_subtitles_24"
                             tools:visibility="visible" />
 
+                        <!-- Unused in trailers; present (hidden) so the shared
+                             PlayerCustomLayoutBinding exposes it. -->
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/player_subtitles_btt"
+                            style="@style/VideoButton"
+                            android:layout_height="40dp"
+                            android:text="@string/pick_subtitle"
+                            android:visibility="gone"
+                            app:icon="@drawable/ic_outline_subtitles_24" />
+
                         <com.google.android.material.button.MaterialButton
                             android:id="@+id/player_sources_btt"
                             style="@style/VideoButton"

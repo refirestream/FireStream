@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Compact, bottom-anchored subtitle picker for TV. Does not pause playback,
+     the video stays visible behind it (Apple TV+ style). -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="300dp"
+    android:layout_height="wrap_content"
+    android:layout_gravity="bottom|end"
+    android:background="@drawable/player_subtitle_select_bg"
+    android:orientation="vertical"
+    android:paddingBottom="8dp">
+
+    <TextView
+        android:id="@+id/subtitles_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="?android:attr/listPreferredItemPaddingStart"
+        android:paddingTop="16dp"
+        android:paddingEnd="?android:attr/listPreferredItemPaddingEnd"
+        android:paddingBottom="8dp"
+        android:text="@string/pick_subtitle"
+        android:textAllCaps="true"
+        android:textColor="?attr/grayTextColor"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <ListView
+        android:id="@+id/sort_subtitles"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@null"
+        android:divider="@null"
+        android:dividerHeight="0dp"
+        android:listSelector="@drawable/outline_drawable_forced"
+        android:requiresFadingEdge="vertical"
+        tools:layout_height="240dp"
+        tools:listitem="@layout/sort_bottom_single_choice" />
+</LinearLayout>

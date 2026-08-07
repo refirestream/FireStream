@@ -1267,12 +1267,18 @@ class GeneratorPlayer : FullScreenPlayer() {
                         subtitleList.setItemChecked(checkedIndex, true)
                     }
                     subtitleList.setOnItemClickListener { _, _, which, _ -> onClick(which) }
-                    subtitleList.post {
-                        // Cap the height so long language lists scroll inside the picker
-                        // instead of growing to fill half the screen.
+
+                    // Cap the height so long language lists scroll inside the picker instead
+                    // of growing to fill the screen. Do this synchronously when the list is
+                    // already laid out (drilling between levels) so the first frame is already
+                    // clamped — otherwise the list paints once at full height then visibly
+                    // collapses to the cap.
+                    fun capHeight() {
+                        val listWidth =
+                            subtitleList.width.takeIf { it > 0 } ?: subtitleList.measuredWidth
                         val maxHeight = (resources.displayMetrics.heightPixels * 0.4f).toInt()
                         val widthSpec = View.MeasureSpec.makeMeasureSpec(
-                            subtitleList.width, View.MeasureSpec.AT_MOST
+                            listWidth, View.MeasureSpec.AT_MOST
                         )
                         var contentHeight = subtitleList.paddingTop + subtitleList.paddingBottom
                         for (i in 0 until adapter.count) {
@@ -1288,7 +1294,16 @@ class GeneratorPlayer : FullScreenPlayer() {
                             height = if (contentHeight > maxHeight) maxHeight
                             else ViewGroup.LayoutParams.WRAP_CONTENT
                         }
-                        // Land the DPAD focus on the currently selected row.
+                    }
+
+                    if (subtitleList.width > 0) {
+                        capHeight()
+                    } else {
+                        subtitleList.post { capHeight() }
+                    }
+
+                    // Land the DPAD focus on the currently selected row.
+                    subtitleList.post {
                         subtitleList.requestFocus()
                         subtitleList.setSelection(checkedIndex.coerceAtLeast(0))
                     }

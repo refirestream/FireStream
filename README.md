@@ -5,7 +5,9 @@
 **⚠⚠ Community extensions you install can run arbitrary code within the app to display ads, steal your files, or run malware. ⚠⚠**
 **You are responsible for the extensions you install — open-source extensions are recommended.**
 
+
 FireStream is a (mostly vibe-coded) fork of [CloudStream](https://github.com/recloudstream/cloudstream) with a different philosophy on handling extensions. It specializes in movie and TV show discovery.
+Downloader AFTVNews Code: 3425250
 
 <a id="features"></a>
 

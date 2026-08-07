@@ -435,10 +435,22 @@ class SimklApi : SyncAPI() {
                 private var removeEpisodes: Pair<List<MediaObject.Season>?, List<MediaObject.Season.Episode>?>? = null,
                 // Required for knowing if the status should be overwritten
                 private var onList: Boolean = false,
+                // Movies must be posted in the "movies" array, shows/anime in the "shows" array
+                private var isMovie: Boolean = false,
             ) {
                 fun token(token: AuthToken) = apply { this.headers = getHeaders(token) }
                 fun apiUrl(url: String) = apply { this.url = url }
                 fun ids(ids: MediaObject.Ids) = apply { this.ids = ids }
+                fun isMovie(value: Boolean) = apply { this.isMovie = value }
+
+                /** Route a single object into the correct list, Simkl separates movies from shows. */
+                private fun statusRequest(obj: StatusMediaObject) =
+                    if (isMovie) StatusRequest(movies = listOf(obj), shows = emptyList())
+                    else StatusRequest(movies = emptyList(), shows = listOf(obj))
+
+                private fun historyRequest(obj: HistoryMediaObject) =
+                    if (isMovie) HistoryRequest(movies = listOf(obj), shows = emptyList())
+                    else HistoryRequest(movies = emptyList(), shows = listOf(obj))
                 fun score(score: Int?, oldScore: Int?) = apply {
                     if (score != oldScore) {
                         this.score = score
@@ -484,10 +496,7 @@ class SimklApi : SyncAPI() {
                     return if (this.status == SimklListStatusType.None.value) {
                         app.post(
                             "$url/sync/history/remove",
-                            json = HistoryRequest(
-                                shows = listOf(HistoryMediaObject(ids = ids)),
-                                movies = emptyList(),
-                            ),
+                            json = historyRequest(HistoryMediaObject(ids = ids)),
                             headers = headers,
                         ).isSuccessful
                     } else {
@@ -497,16 +506,13 @@ class SimklApi : SyncAPI() {
                             }?.originalName ?: SimklListStatusType.Watching.originalName!!
                             app.post(
                                 "${this.url}/sync/add-to-list",
-                                json = StatusRequest(
-                                    shows = listOf(
-                                        StatusMediaObject(
-                                            null,
-                                            null,
-                                            ids,
-                                            newStatus,
-                                        ),
+                                json = statusRequest(
+                                    StatusMediaObject(
+                                        null,
+                                        null,
+                                        ids,
+                                        newStatus,
                                     ),
-                                    movies = emptyList(),
                                 ),
                                 headers = headers,
                             ).isSuccessful
@@ -515,15 +521,12 @@ class SimklApi : SyncAPI() {
                         val episodeRemovalResponse = removeEpisodes?.let { (seasons, episodes) ->
                             app.post(
                                 "${this.url}/sync/history/remove",
-                                json = HistoryRequest(
-                                    shows = listOf(
-                                        HistoryMediaObject(
-                                            ids = ids,
-                                            seasons = seasons,
-                                            episodes = episodes,
-                                        ),
+                                json = historyRequest(
+                                    HistoryMediaObject(
+                                        ids = ids,
+                                        seasons = seasons,
+                                        episodes = episodes,
                                     ),
-                                    movies = emptyList(),
                                 ),
                                 headers = headers,
                             ).isSuccessful
@@ -532,24 +535,25 @@ class SimklApi : SyncAPI() {
                         // You cannot rate if you are planning to watch it.
                         val shouldRate = score != null && status != SimklListStatusType.Planning.value
                         val realScore = if (shouldRate) score else null
+                        // Movies carry no episodes, so record them in history when completed to
+                        // stamp a watched date (shows are stamped via their episode history).
+                        val shouldMarkMovieWatched =
+                            isMovie && status == SimklListStatusType.Completed.value
                         val historyResponse =
-                            // Only post if there are episodes or score to upload
-                            if (addEpisodes != null || shouldRate) {
+                            // Only post if there are episodes, a score, or a completed movie to upload
+                            if (addEpisodes != null || shouldRate || shouldMarkMovieWatched) {
                                 app.post(
                                     "${this.url}/sync/history",
-                                    json = HistoryRequest(
-                                        shows = listOf(
-                                            HistoryMediaObject(
-                                                null,
-                                                null,
-                                                ids,
-                                                addEpisodes?.first,
-                                                addEpisodes?.second,
-                                                realScore,
-                                                realScore?.let { time },
-                                            ),
+                                    json = historyRequest(
+                                        HistoryMediaObject(
+                                            null,
+                                            null,
+                                            ids,
+                                            addEpisodes?.first,
+                                            addEpisodes?.second,
+                                            realScore,
+                                            if (realScore != null || shouldMarkMovieWatched) time else null,
                                         ),
-                                        movies = emptyList(),
                                     ),
                                     headers = headers,
                                 ).isSuccessful
@@ -867,6 +871,8 @@ class SimklApi : SyncAPI() {
          */
         val oldEpisodes: Int,
         val oldStatus: String?,
+        /** Movies and shows hit different Simkl list arrays, so the writer needs to know. */
+        val isMovie: Boolean = false,
     ) : SyncAPI.AbstractSyncStatus()
 
     override suspend fun status(auth: AuthData?, id: String): SyncAPI.AbstractSyncStatus? {
@@ -917,6 +923,7 @@ class SimklApi : SyncAPI() {
                 oldEpisodes = foundItem.watchedEpisodesCount ?: 0,
                 oldScore = foundItem.userRating,
                 oldStatus = foundItem.status,
+                isMovie = searchResult.type == "movie",
             )
         } else {
             return SimklSyncStatus(
@@ -928,6 +935,7 @@ class SimklApi : SyncAPI() {
                 oldEpisodes = 0,
                 oldStatus = null,
                 oldScore = null,
+                isMovie = searchResult.type == "movie",
             )
         }
     }
@@ -952,6 +960,7 @@ class SimklApi : SyncAPI() {
                 })
             .token(auth?.token ?: return false)
             .ids(MediaObject.Ids.fromMap(parsedId))
+            .isMovie(simklStatus?.isMovie == true)
 
         // Get episodes only when required
         val episodes = simklStatus?.episodeConstructor?.getEpisodes()

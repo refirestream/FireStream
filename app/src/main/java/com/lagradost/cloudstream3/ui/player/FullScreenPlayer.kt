@@ -157,6 +157,15 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
                 autoHide()
             }
         }
+    /** Compact bottom-anchored subtitle picker (TV), distinct from the subtitle offset dialog above. */
+    protected var selectSubtitleTrackDialog: Dialog? = null
+        set(value) {
+            val prevField = field
+            field = value
+            if (value == null && prevField != null) {
+                autoHide()
+            }
+        }
 
     /** Checks if any top level dialog is open and showing */
     fun isDialogOpen() =
@@ -164,6 +173,7 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
                 || selectTrackDialog?.isShowing == true
                 || selectSpeedDialog?.isShowing == true
                 || selectSubtitlesDialog?.isShowing == true
+                || selectSubtitleTrackDialog?.isShowing == true
                 || isShowingEpisodeOverlay
 
     private fun scheduleMetadataVisibility() {
@@ -227,6 +237,10 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
     }
 
     open fun showMirrorsDialogue() {
+        throw NotImplementedError()
+    }
+
+    open fun showSubtitlesDialogue() {
         throw NotImplementedError()
     }
 
@@ -1257,6 +1271,10 @@ open class FullScreenPlayer : AbstractPlayerFragment<FragmentPlayerBinding>(
 
             playerGoBack.setOnClickListener {
                 activity?.popCurrentPage("FullScreenPlayer")
+            }
+
+            playerSubtitlesBtt.setOnClickListener {
+                showSubtitlesDialogue()
             }
 
             playerSourcesBtt.setOnClickListener {

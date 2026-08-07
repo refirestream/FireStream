@@ -18,6 +18,8 @@ import com.lagradost.cloudstream3.syncproviders.SyncAPI
 import com.lagradost.cloudstream3.ui.SyncWatchType
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import com.lagradost.cloudstream3.utils.SyncUtil
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import java.util.*
 
 
@@ -32,7 +34,12 @@ data class CurrentSynced(
 class SyncViewModel : ViewModel() {
     companion object {
         const val TAG = "SYNCVM"
+
+        /** Debounce window so rapid edits (dragging stars, tapping +/-) coalesce into one upload. */
+        private const val PUBLISH_DEBOUNCE_MS = 600L
     }
+
+    private var publishJob: Job? = null
 
     private val repos = AccountManager.syncApis
 
@@ -179,6 +186,25 @@ class SyncViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Debounced background upload of the current local edits (score/status/episodes).
+     * Backs the auto-save flow that replaced the manual "set score" button. Unlike
+     * [publishUserData] it does not flip the response to [Resource.Loading], so the panel
+     * does not flicker while the user is still editing.
+     */
+    fun requestPublish() {
+        publishJob?.cancel()
+        publishJob = ioSafe {
+            delay(PUBLISH_DEBOUNCE_MS)
+            val user = userData.value
+            if (user is Resource.Success) {
+                syncs.forEach { (prefix, id) ->
+                    repos.firstOrNull { it.idPrefix == prefix }?.updateStatus(id, user.value)
+                }
+            }
+        }
+    }
+
     fun publishUserData() = ioSafe {
         Log.i(TAG, "publishUserData")
         val user = userData.value
@@ -199,6 +225,35 @@ class SyncViewModel : ViewModel() {
                 status.watchedEpisodes ?: return@modifyData null
             )
             status
+        }
+    }
+
+    /**
+     * Background sync entry point, called when playback of a title reaches completion.
+     *
+     * Movies are marked [SyncWatchType.COMPLETED]; series advance their watched episode
+     * count to [episodeIndex]. This is fully provider-agnostic: it only relies on the
+     * [com.lagradost.cloudstream3.syncproviders.SyncAPI.status]/updateStatus contract, so
+     * every registered sync provider gets background syncing without any extra wiring.
+     *
+     * Returns null from [modifyData] when nothing changed to avoid redundant network calls.
+     */
+    fun markWatched(isMovie: Boolean, episodeIndex: Int?) {
+        Log.i(TAG, "markWatched isMovie=$isMovie episodeIndex=$episodeIndex")
+        modifyData { status ->
+            if (isMovie) {
+                if (status.status == SyncWatchType.COMPLETED) return@modifyData null
+                status.status = SyncWatchType.COMPLETED
+                // Fill watched episodes so providers that count episodes (e.g. MAL/AniList
+                // anime movies) don't leave the title at 0/1. Simkl movies report 0 here.
+                status.maxEpisodes?.let { max -> if (max > 0) status.watchedEpisodes = max }
+                status
+            } else {
+                val index = episodeIndex ?: return@modifyData null
+                if (index <= (status.watchedEpisodes ?: 0)) return@modifyData null
+                status.watchedEpisodes = index
+                status
+            }
         }
     }
 

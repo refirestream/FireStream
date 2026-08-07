@@ -1775,7 +1775,13 @@ class GeneratorPlayer : FullScreenPlayer() {
                             )
                         ) {
                             maxEpisodeSet = meta.episode
-                            sync.modifyMaxEpisode(meta.totalEpisodeIndex ?: meta.episode)
+                            // Movies have no episode progress to advance, so mark the whole
+                            // title as watched instead. Series keep advancing episode count.
+                            if (meta.tvType.isMovieType()) {
+                                sync.markWatched(isMovie = true, episodeIndex = null)
+                            } else {
+                                sync.modifyMaxEpisode(meta.totalEpisodeIndex ?: meta.episode)
+                            }
                         }
                     }
                 }

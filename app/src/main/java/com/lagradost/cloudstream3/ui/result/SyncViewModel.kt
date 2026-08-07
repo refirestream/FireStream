@@ -202,6 +202,35 @@ class SyncViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Background sync entry point, called when playback of a title reaches completion.
+     *
+     * Movies are marked [SyncWatchType.COMPLETED]; series advance their watched episode
+     * count to [episodeIndex]. This is fully provider-agnostic: it only relies on the
+     * [com.lagradost.cloudstream3.syncproviders.SyncAPI.status]/updateStatus contract, so
+     * every registered sync provider gets background syncing without any extra wiring.
+     *
+     * Returns null from [modifyData] when nothing changed to avoid redundant network calls.
+     */
+    fun markWatched(isMovie: Boolean, episodeIndex: Int?) {
+        Log.i(TAG, "markWatched isMovie=$isMovie episodeIndex=$episodeIndex")
+        modifyData { status ->
+            if (isMovie) {
+                if (status.status == SyncWatchType.COMPLETED) return@modifyData null
+                status.status = SyncWatchType.COMPLETED
+                // Fill watched episodes so providers that count episodes (e.g. MAL/AniList
+                // anime movies) don't leave the title at 0/1. Simkl movies report 0 here.
+                status.maxEpisodes?.let { max -> if (max > 0) status.watchedEpisodes = max }
+                status
+            } else {
+                val index = episodeIndex ?: return@modifyData null
+                if (index <= (status.watchedEpisodes ?: 0)) return@modifyData null
+                status.watchedEpisodes = index
+                status
+            }
+        }
+    }
+
     /// modifies the current sync data, return null if you don't want to change it
     private fun modifyData(update: ((SyncAPI.AbstractSyncStatus) -> (SyncAPI.AbstractSyncStatus?))) =
         ioSafe {

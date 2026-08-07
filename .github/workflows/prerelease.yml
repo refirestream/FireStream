@@ -75,6 +75,10 @@ jobs:
         prerelease: true
         make_latest: false
         name: "Pre-release Build"
+        # Ensure a non-empty body: a null release body crashes the
+        # in-app updater's JSON parse on older installs, showing a
+        # perpetual "No updates found".
+        generate_release_notes: true
         files: |
           app/build/outputs/apk/alpha/release/*.apk
           app/build/libs/app-sources.jar

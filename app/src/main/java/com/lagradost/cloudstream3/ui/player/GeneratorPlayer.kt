@@ -1270,7 +1270,7 @@ class GeneratorPlayer : FullScreenPlayer() {
                     subtitleList.post {
                         // Cap the height so long language lists scroll inside the picker
                         // instead of growing to fill half the screen.
-                        val maxHeight = (resources.displayMetrics.heightPixels * 0.5f).toInt()
+                        val maxHeight = (resources.displayMetrics.heightPixels * 0.4f).toInt()
                         val widthSpec = View.MeasureSpec.makeMeasureSpec(
                             subtitleList.width, View.MeasureSpec.AT_MOST
                         )

@@ -910,15 +910,15 @@
                                 app:icon="@drawable/ic_outline_subtitles_24"
                                 tools:visibility="visible" />
 
-                            <!-- Phone uses the combined sources+subtitles dialog; this dedicated
-                                 subtitles button is TV-only, kept here (hidden) so the shared
-                                 PlayerCustomLayoutBinding exposes it. -->
+                            <!-- Quick subtitle picker: bottom-anchored, does not pause playback.
+                                 Shown on both phone and TV, sitting next to Sources. -->
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/player_subtitles_btt"
                                 style="@style/VideoButton"
                                 android:layout_height="40dp"
+                                android:nextFocusLeft="@id/player_subtitle_offset_btt"
+                                android:nextFocusRight="@id/player_sources_btt"
                                 android:text="@string/pick_subtitle"
-                                android:visibility="gone"
                                 app:icon="@drawable/ic_outline_subtitles_24" />
 
                             <com.google.android.material.button.MaterialButton
@@ -926,7 +926,7 @@
                                 style="@style/VideoButton"
                                 android:layout_height="40dp"
 
-                                android:nextFocusLeft="@id/player_subtitle_offset_btt"
+                                android:nextFocusLeft="@id/player_subtitles_btt"
                                 android:nextFocusRight="@id/player_tracks_btt"
                                 android:text="@string/video_source"
                                 app:icon="@drawable/ic_baseline_playlist_play_24" />

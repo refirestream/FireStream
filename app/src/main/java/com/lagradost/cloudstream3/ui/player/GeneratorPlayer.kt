@@ -1463,52 +1463,23 @@ class GeneratorPlayer : FullScreenPlayer() {
                 }
 
                 val subtitleList = binding.sortSubtitles
+                val titleView = binding.subtitlesText
+                val defaultTitle = ctx.getString(R.string.pick_subtitle)
 
-                // Flatten the language grouping into a single "Off" + one-row-per-track list.
+                // Group tracks by language name; drill into a group only when it holds
+                // more than one track. Single-track groups apply on first tap.
                 val unknownGroupName = ctx.getString(R.string.subtitles_group_unknown)
                 fun groupName(sub: SubtitleData): String {
                     return fromTagToLanguageName(sub.getIETF_tag())?.takeIf { it.isNotBlank() }
                         ?: unknownGroupName
                 }
 
-                val subtitlesGrouped = currentSubtitles.groupBy { groupName(it) }
-
-                // null data == "No Subtitles" (Off)
-                val entrySubtitles = ArrayList<SubtitleData?>()
-                val entryLabels = ArrayList<Spanned>()
-
-                entrySubtitles.add(null)
-                entryLabels.add(ctx.getString(R.string.no_subtitles).html())
-
-                subtitlesGrouped.forEach { (group, subs) ->
-                    val sorted = subs.sortedBy { it.nameSuffix.toIntOrNull() ?: 0 }
-                    sorted.forEachIndexed { index, sub ->
-                        // Disambiguate only when a language has more than one track.
-                        val label = if (sorted.size <= 1) {
-                            group
-                        } else {
-                            val extra = sub.originalName.ifBlank {
-                                sub.nameSuffix.ifBlank { (index + 1).toString() }
-                            }
-                            "$group — $extra"
+                val subtitlesGrouped: Map<String, List<SubtitleData>> =
+                    currentSubtitles.groupBy { groupName(it) }
+                        .mapValues { (_, subs) ->
+                            subs.sortedBy { it.nameSuffix.toIntOrNull() ?: 0 }
                         }
-                        entrySubtitles.add(sub)
-                        entryLabels.add(label.html())
-                    }
-                }
-
-                val selectedIndex =
-                    entrySubtitles.indexOfFirst { it == currentSelectedSubtitles }
-                        .takeIf { it >= 0 } ?: 0
-
-                val subsArrayAdapter =
-                    ArrayAdapter<Spanned>(ctx, R.layout.sort_bottom_single_choice)
-                subsArrayAdapter.addAll(entryLabels)
-
-                subtitleList.adapter = subsArrayAdapter
-                subtitleList.choiceMode = AbsListView.CHOICE_MODE_SINGLE
-                subtitleList.setItemChecked(selectedIndex, true)
-                subtitleList.setSelection(selectedIndex)
+                val groupNames = subtitlesGrouped.keys.toList()
 
                 fun dismiss() {
                     subtitleDialog.dismissSafe(activity)
@@ -1516,14 +1487,12 @@ class GeneratorPlayer : FullScreenPlayer() {
                     activity?.hideSystemUI()
                 }
 
-                subtitleList.setOnItemClickListener { _, _, which, _ ->
-                    val subtitle = entrySubtitles.getOrNull(which)
+                fun applySubtitle(subtitle: SubtitleData?) {
                     val requiresReload = if (subtitle == null) {
                         noSubtitles()
                     } else {
                         setSubtitles(subtitle, true)
                     }
-                    subtitleList.setItemChecked(which, true)
                     // Some subtitles (e.g. online ones not yet loaded) need the current
                     // source reloaded before they become active.
                     if (requiresReload) {
@@ -1532,15 +1501,89 @@ class GeneratorPlayer : FullScreenPlayer() {
                     dismiss()
                 }
 
+                fun bind(labels: List<Spanned>, checkedIndex: Int, onClick: (Int) -> Unit) {
+                    val adapter = ArrayAdapter<Spanned>(ctx, R.layout.sort_bottom_single_choice)
+                    adapter.addAll(labels)
+                    subtitleList.adapter = adapter
+                    subtitleList.choiceMode = AbsListView.CHOICE_MODE_SINGLE
+                    if (checkedIndex >= 0) {
+                        subtitleList.setItemChecked(checkedIndex, true)
+                    }
+                    subtitleList.setOnItemClickListener { _, _, which, _ -> onClick(which) }
+                    // Land the DPAD focus on the currently selected row.
+                    subtitleList.post {
+                        subtitleList.requestFocus()
+                        subtitleList.setSelection(checkedIndex.coerceAtLeast(0))
+                    }
+                }
+
+                // Forward reference so the track view's "Go Back" row can return to groups.
+                var showGroups: () -> Unit = {}
+
+                // Level 2: the tracks inside a single language group.
+                fun showTracks(group: String) {
+                    val tracks = subtitlesGrouped[group].orEmpty()
+                    titleView.text = group
+
+                    val labels = ArrayList<Spanned>()
+                    labels.add(("‹ " + ctx.getString(R.string.go_back)).html())
+                    tracks.forEachIndexed { index, sub ->
+                        val extra = sub.originalName.ifBlank {
+                            sub.nameSuffix.ifBlank { (index + 1).toString() }
+                        }
+                        labels.add(extra.html())
+                    }
+
+                    // +1 offsets past the "Go Back" row.
+                    val checkedIndex =
+                        tracks.indexOfFirst { it == currentSelectedSubtitles }
+                            .takeIf { it >= 0 }?.plus(1) ?: -1
+
+                    bind(labels, checkedIndex) { which ->
+                        if (which == 0) {
+                            showGroups()
+                        } else {
+                            applySubtitle(tracks.getOrNull(which - 1))
+                        }
+                    }
+                }
+
+                // Level 1: the language groups plus an "Off" row.
+                showGroups = {
+                    titleView.text = defaultTitle
+
+                    val labels = ArrayList<Spanned>()
+                    val onClicks = ArrayList<() -> Unit>()
+                    var checkedIndex = 0
+
+                    labels.add(ctx.getString(R.string.no_subtitles).html())
+                    onClicks.add { applySubtitle(null) }
+
+                    groupNames.forEach { group ->
+                        val tracks = subtitlesGrouped.getValue(group)
+                        if (tracks.any { it == currentSelectedSubtitles }) {
+                            checkedIndex = labels.size
+                        }
+                        // Show the track count as a hint that the row drills in.
+                        val suffix = if (tracks.size > 1) " (${tracks.size})" else ""
+                        labels.add((group + suffix).html())
+                        onClicks.add(
+                            if (tracks.size == 1) {
+                                { applySubtitle(tracks.first()) }
+                            } else {
+                                { showTracks(group) }
+                            }
+                        )
+                    }
+
+                    bind(labels, checkedIndex) { which -> onClicks.getOrNull(which)?.invoke() }
+                }
+
                 subtitleDialog.setOnDismissListener {
                     selectSubtitleTrackDialog = null
                 }
 
-                // Land the DPAD focus on the currently selected row.
-                subtitleList.post {
-                    subtitleList.requestFocus()
-                    subtitleList.setSelection(selectedIndex)
-                }
+                showGroups()
             }
         } catch (e: Exception) {
             logError(e)

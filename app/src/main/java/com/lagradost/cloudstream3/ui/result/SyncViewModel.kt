@@ -18,6 +18,8 @@ import com.lagradost.cloudstream3.syncproviders.SyncAPI
 import com.lagradost.cloudstream3.ui.SyncWatchType
 import com.lagradost.cloudstream3.utils.Coroutines.ioSafe
 import com.lagradost.cloudstream3.utils.SyncUtil
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import java.util.*
 
 
@@ -32,7 +34,12 @@ data class CurrentSynced(
 class SyncViewModel : ViewModel() {
     companion object {
         const val TAG = "SYNCVM"
+
+        /** Debounce window so rapid edits (dragging stars, tapping +/-) coalesce into one upload. */
+        private const val PUBLISH_DEBOUNCE_MS = 600L
     }
+
+    private var publishJob: Job? = null
 
     private val repos = AccountManager.syncApis
 
@@ -176,6 +183,25 @@ class SyncViewModel : ViewModel() {
         if (user is Resource.Success) {
             user.value.status = SyncWatchType.fromInternalId(which)
             _userDataResponse.postValue(Resource.Success(user.value))
+        }
+    }
+
+    /**
+     * Debounced background upload of the current local edits (score/status/episodes).
+     * Backs the auto-save flow that replaced the manual "set score" button. Unlike
+     * [publishUserData] it does not flip the response to [Resource.Loading], so the panel
+     * does not flicker while the user is still editing.
+     */
+    fun requestPublish() {
+        publishJob?.cancel()
+        publishJob = ioSafe {
+            delay(PUBLISH_DEBOUNCE_MS)
+            val user = userData.value
+            if (user is Resource.Success) {
+                syncs.forEach { (prefix, id) ->
+                    repos.firstOrNull { it.idPrefix == prefix }?.updateStatus(id, user.value)
+                }
+            }
         }
     }
 

@@ -1170,10 +1170,11 @@ open class ResultFragmentPhone : BaseFragment<FragmentResultSwipeBinding>(
                         resultSyncHolder.isVisible = true
 
                         val d = status.value
-                        val desiredScore = d.score?.toFloat(1) ?: 0.0f
-                        val totalSteps = (resultSyncRating.valueTo / resultSyncRating.stepSize)
-                        val desiredStep = (totalSteps * desiredScore).roundToInt()
-                        resultSyncRating.value = desiredStep * resultSyncRating.stepSize
+                        // RatingBar is 0..5 in half-star steps; round the stored score to the
+                        // nearest half star. Setting rating fires the listener with fromUser=false,
+                        // which is ignored, so this does not trigger an upload.
+                        resultSyncRating.rating =
+                            (((d.score?.toFloat(5) ?: 0.0f) * 2).roundToInt()) / 2.0f
 
                         resultSyncCheck.setItemChecked(d.status.internalId + 1, true)
                         val watchedEpisodes = d.watchedEpisodes ?: 0
@@ -1235,33 +1236,40 @@ open class ResultFragmentPhone : BaseFragment<FragmentResultSwipeBinding>(
                 resultSyncCheck.adapter = arrayAdapter
                 setListViewHeightBasedOnItems(resultSyncCheck)
 
+                // All edits auto-save (debounced) now that the manual "set score" button is gone.
                 resultSyncCheck.setOnItemClickListener { _, _, which, _ ->
                     syncModel.setStatus(which - 1)
+                    syncModel.requestPublish()
                 }
 
-                resultSyncRating.addOnChangeListener { it, value, fromUser ->
-                    if (fromUser) syncModel.setScore(Score.from(value, it.valueTo.roundToInt()))
+                resultSyncRating.setOnRatingBarChangeListener { _, rating, fromUser ->
+                    if (fromUser) {
+                        // rating is 0..5 in half-star steps
+                        syncModel.setScore(Score.from(rating, 5))
+                        syncModel.requestPublish()
+                    }
                 }
 
                 resultSyncAddEpisode.setOnClickListener {
                     syncModel.setEpisodesDelta(1)
+                    syncModel.requestPublish()
                 }
 
                 resultSyncSubEpisode.setOnClickListener {
                     syncModel.setEpisodesDelta(-1)
+                    syncModel.requestPublish()
                 }
 
                 resultSyncCurrentEpisodes.doOnTextChanged { text, _, before, count ->
                     if (count == before) return@doOnTextChanged
                     text?.toString()?.toIntOrNull()?.let { ep ->
                         syncModel.setEpisodes(ep)
+                        // Only upload when the change came from the user typing, not from the
+                        // observer repopulating the field on load.
+                        if (resultSyncCurrentEpisodes.isFocused) syncModel.requestPublish()
                     }
                 }
             }
-        }
-
-        syncBinding?.resultSyncSetScore?.setOnClickListener {
-            syncModel.publishUserData()
         }
 
         observe(viewModel.watchStatus) { watchType ->

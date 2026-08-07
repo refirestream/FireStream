@@ -31,3 +31,7 @@ FireStream inverts that: you choose content from a single provider: TMDB, and in
 - **A Source is a single website.** Not a bundle, not a repository of unknowns — one site = one source.
 - **Quality and speed are the goal.** The point of a source is that it works, and works fast. You curate a short list you trust rather than carrying a long list you don't.
 - **You decide.** Nothing is bundled in by default. Your source list is exactly what you chose to install.
+
+
+You want to create your own source ? Look at:
+https://github.com/refirestream/FireTemplate

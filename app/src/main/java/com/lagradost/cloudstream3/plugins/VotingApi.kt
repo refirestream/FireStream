@@ -54,7 +54,7 @@ object VotingApi {
     // get_score is an uncertified query and a certified domain rejects it (see
     // fire-backend/CLAUDE.md). No trailing slash.
     //   BASE_URL = https://<canister-id>.raw.icp0.io
-    private const val BASE_URL = "https://2gsgt-vyaaa-aaaab-qacia-cai.raw.icp0.io"
+    private const val BASE_URL = "https://4lisw-jiaaa-aaaab-agzhq-cai.raw.icp0.io"
 
     /**
      * Master switch for voting. UI hides the thumbs and flame badge while this

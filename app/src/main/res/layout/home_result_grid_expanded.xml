@@ -180,32 +180,39 @@
                     android:layout_gravity="center"/>
             </LinearLayout>
 
-            <ImageView
-                android:id="@+id/rating_shadow"
-                android:layout_width="match_parent"
-                android:layout_height="18dp"
-                android:layout_gravity="bottom"
-                android:clickable="false"
-                android:focusable="false"
-                android:src="@drawable/title_shadow"
+            <FrameLayout
+                android:id="@+id/rating_badge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_marginTop="4dp"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/rating_badge_bg"
+                android:padding="2dp"
                 android:visibility="gone"
-                tools:ignore="ContentDescription"
-                tools:visibility="visible" />
+                tools:visibility="visible">
 
-            <ProgressBar
-                android:id="@+id/rating_progress"
-                style="@android:style/Widget.Material.ProgressBar.Horizontal"
-                android:layout_width="match_parent"
-                android:layout_height="2dp"
-                android:layout_gravity="bottom"
-                android:layout_marginStart="30dp"
-                android:layout_marginEnd="30dp"
-                android:layout_marginBottom="4dp"
-                android:max="100"
-                android:progressDrawable="@drawable/rating_progress"
-                android:visibility="gone"
-                tools:progress="70"
-                tools:visibility="visible" />
+                <com.google.android.material.progressindicator.CircularProgressIndicator
+                    android:id="@+id/rating_progress"
+                    android:layout_width="26dp"
+                    android:layout_height="26dp"
+                    android:indeterminate="false"
+                    android:max="100"
+                    app:indicatorSize="26dp"
+                    app:trackColor="#4DFFFFFF"
+                    app:trackThickness="3dp"
+                    tools:progress="79" />
+
+                <TextView
+                    android:id="@+id/rating_text"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:textColor="@color/white"
+                    android:textSize="8sp"
+                    android:textStyle="bold"
+                    tools:text="79%" />
+            </FrameLayout>
         </androidx.cardview.widget.CardView>
 
         <TextView

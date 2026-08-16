@@ -12,6 +12,7 @@ import androidx.cardview.widget.CardView
 import androidx.core.view.isVisible
 import androidx.palette.graphics.Palette
 import androidx.preference.PreferenceManager
+import com.google.android.material.progressindicator.CircularProgressIndicator
 import com.lagradost.cloudstream3.AnimeSearchResponse
 import com.lagradost.cloudstream3.DubStatus
 import com.lagradost.cloudstream3.LiveSearchResponse
@@ -71,8 +72,9 @@ object SearchResultBuilder {
         val textIsSub: TextView? = itemView.findViewById(R.id.text_is_sub)
         val textFlag: TextView? = itemView.findViewById(R.id.text_flag)
         val rating: TextView? = itemView.findViewById(R.id.text_rating)
-        val ratingBar: ProgressBar? = itemView.findViewById(R.id.rating_progress)
-        val ratingShadow: View? = itemView.findViewById(R.id.rating_shadow)
+        val ratingBar: CircularProgressIndicator? = itemView.findViewById(R.id.rating_progress)
+        val ratingText: TextView? = itemView.findViewById(R.id.rating_text)
+        val ratingBadge: View? = itemView.findViewById(R.id.rating_badge)
 
         val textQuality: TextView? = itemView.findViewById(R.id.text_quality)
         val shadow: View? = itemView.findViewById(R.id.title_shadow)
@@ -91,8 +93,7 @@ object SearchResultBuilder {
         textIsSub?.isVisible = false
         textFlag?.isVisible = false
         rating?.isVisible = false
-        ratingBar?.isVisible = false
-        ratingShadow?.isVisible = false
+        ratingBadge?.isVisible = false
         episodeText?.isVisible = false
 
         val showSub = showCache[textIsDub?.context?.getString(R.string.show_sub_key)] ?: false
@@ -102,26 +103,26 @@ object SearchResultBuilder {
         val showHd = showCache[textQuality?.context?.getString(R.string.show_hd_key)] ?: false
         val showRatingView =
             showCache[textQuality?.context?.getString(R.string.show_rating_key)] ?: false
-        // The rating is drawn as a progress bar along the bottom of the poster
-        // instead of a bubble: personal rating for library items, otherwise the
-        // public score (gated by the "Rating Label" poster option).
+        // The rating is drawn as a circular badge in the top-right corner of
+        // the poster: personal rating for library items, otherwise the public
+        // score (gated by the "Rating Label" poster option).
         val ratingScore = when {
             card is SyncAPI.LibraryItem -> card.personalRating
             showRatingView -> card.score
             else -> null
         }
         // toStringNull returns null below the minimum, preserving the old
-        // "hide 0.0/10" behaviour; reuse it to decide whether to draw the bar.
+        // "hide 0.0/10" behaviour; reuse it to decide whether to draw the badge.
         if (ratingScore?.toStringNull(0.1, 10, 1) != null) {
             val value = ratingScore.toFloat(10).coerceIn(0f, 10f)
+            val percent = (value * 10f).roundToInt()
             ratingBar?.apply {
                 max = 100
-                progress = (value * 10f).roundToInt()
-                progressTintList = ColorStateList.valueOf(ratingBarColor(value))
-                isVisible = true
+                progress = percent
+                setIndicatorColor(ratingBarColor(value))
             }
-            // Darken the poster behind the bar so it stays legible over the image.
-            ratingShadow?.isVisible = true
+            ratingText?.text = "$percent%"
+            ratingBadge?.isVisible = true
         }
 
         shadow?.isVisible = showTitle

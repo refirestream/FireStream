@@ -1,5 +1,7 @@
 # FireStream
 
+![FireStream](https://i.imgur.com/OHm2WMk.png)
+
 **FireStream ships with no extensions or sources. It is a media discovery tool.**
 
 **⚠⚠ Community extensions you install can run arbitrary code within the app to display ads, steal your files, or run malware. ⚠⚠**

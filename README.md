@@ -1,7 +1,7 @@
 # FireStream
 
 
-<p align="left"><a href="https://github.com/refirestream/firestream/releases/download/pre-release/app-prerelease-release.apk"><img src="https://i.imgur.com/OHm2WMk.png" alt="Download FireStream Pre-Release" width=430/></a></p>
+<p align="left"><a href="https://github.com/refirestream/FireStream/releases/download/pre-release/app-alpha-release.apk"><img src="https://i.imgur.com/OHm2WMk.png" alt="Download FireStream Pre-Release" width=430/></a></p>
 
 **FireStream ships with no extensions or sources. It is a media discovery tool.**
 
